@@ -1,8 +1,12 @@
 ---
 import '../../styles/global.css';
+import Button from '../components/shirt.svelte';
+
 ---
 <div class="h-screen flex items-center justify-center">
   <h1 class="text-black text-5xl md:text-7xl lg:text-8xl 2xl:text-9xl font-EditorialNewRegular">
     UTXOWEAR
   </h1>
+  <Astro.component component={Button} />
+
 </div>

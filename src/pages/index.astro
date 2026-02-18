@@ -1,6 +1,8 @@
 ---
 import ShirtMount from '../components/ShirtMount.svelte';
+import ProductList from '../components/ProductList.astro';
 import '../app.css';
+import { Image } from 'astro:assets';
 ---
 
 <html lang="en" data-theme="corporate">
@@ -20,6 +22,7 @@ import '../app.css';
             <p class="text-sm font-semibold uppercase tracking-[0.3em] text-primary">UTXOWEAR</p>
           </div>
           <ShirtMount client:load />
+          <ProductList />
         </div>
       </section>
     </main>

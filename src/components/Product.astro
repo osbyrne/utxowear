@@ -1,0 +1,21 @@
+---
+const { productName } = Astro.props;
+---
+
+<article class="card bg-base-100 shadow-md ring-1 ring-base-300/60">
+  <figure>
+    <img
+      src="/demo-product.svg"
+      alt={`${productName} demo image`}
+      loading="lazy"
+      class="h-40 w-full object-cover"
+    />
+  </figure>
+  <div class="card-body gap-2">
+    <h3 class="card-title capitalize">{productName}</h3>
+    <p>
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer in justo eu nunc interdum
+      volutpat.
+    </p>
+  </div>
+</article>

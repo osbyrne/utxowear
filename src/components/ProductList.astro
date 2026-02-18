@@ -1,0 +1,8 @@
+---
+import Product from './Product.astro';
+import products from '../../products.json';
+---
+
+<section class="grid gap-4 sm:grid-cols-2">
+  {products.map((productName) => <Product productName={productName} />)}
+</section>

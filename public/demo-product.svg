@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Demo product image</title>
+  <desc id="desc">A simple placeholder image for product cards.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d9e4ff" />
+      <stop offset="100%" stop-color="#f6f9ff" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)" />
+  <g fill="none" stroke="#7a94d6" stroke-width="24">
+    <circle cx="250" cy="220" r="120" />
+    <circle cx="920" cy="620" r="160" />
+  </g>
+  <text x="600" y="420" text-anchor="middle" font-family="Arial, sans-serif" font-size="72" fill="#3f4f7a">
+    Product Demo
+  </text>
+</svg>

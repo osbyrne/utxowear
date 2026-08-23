@@ -1,0 +1,10 @@
+- finish shirt component [DONE]
+    - [x] stop rotation, force fixed camera
+    - [x] remove grid
+    - [x] make click & drag interactive
+    - [x] give it the shape of a shirt
+
+- link products to Printify
+    - read Printify API documentation
+
+- add pay with crytpo?

@@ -1,15 +1,15 @@
 ---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
 import ShirtMount from '../components/ShirtMount.svelte';
 import ProductList from '../components/ProductList.astro';
 import '../app.css';
-import { Image } from 'astro:assets';
 ---
 
 <html lang="en" data-theme="corporate">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="/icon.webp" />
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
     <title>utxowear</title>
@@ -17,6 +17,7 @@ import { Image } from 'astro:assets';
   <body class="min-h-screen bg-base-200">
     <main class="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center p-6">
       <section class="card w-full max-w-xl bg-base-100 shadow-2xl ring-1 ring-base-300/60">
+          <Header />
         <div class="card-body gap-6">
           <div class="space-y-2 text-center">
             <p class="text-sm font-semibold uppercase tracking-[0.3em] text-primary">UTXOWEAR</p>
@@ -24,6 +25,7 @@ import { Image } from 'astro:assets';
           <ShirtMount client:load />
           <ProductList />
         </div>
+        <Footer />
       </section>
     </main>
   </body>

@@ -3,11 +3,9 @@
     import * as THREE from "three";
     import { onMount } from "svelte";
 
-    // Cloth simulation physics parameters
-    const mass = 0.08;
-    const damping = 0.032;
-    const windStrength = 0.35;
-    const windSpeed = 1.1;
+    // Heavyweight 280+ GSM streetwear cotton physics (realistic drape, zero wind)
+    const mass = 0.45;
+    const damping = 0.085;
 
     type Particle = {
         position: THREE.Vector3;
@@ -27,10 +25,7 @@
         stiffness: number;
     };
 
-    let clothGeometry: THREE.BufferGeometry;
     let clothMesh: THREE.Mesh | undefined = $state();
-    let particles: Particle[] = [];
-    let constraints: Constraint[] = [];
     let shirtTexture = $state<THREE.CanvasTexture | null>(null);
 
     // Interaction state
@@ -44,160 +39,279 @@
 
     const { camera, renderer } = useThrelte();
 
-    // 1. Generate accurate T-shirt silhouette and particle mesh
+    // 1. Generate one unified seamless 3D garment mesh (torso, shoulders, and sleeves are ONE single continuous fabric)
     function createShirtGeometry() {
-        const resX = 42;
-        const resY = 50;
-        const minX = -1.35,
-            maxX = 1.35;
-        const minY = -1.30,
-            maxY = 1.15;
-
-        function isInsideShirt(x: number, y: number): boolean {
-            const ax = Math.abs(x);
-            const w_neck = 0.28;
-            if (y > 1.06) return false;
-
-            // Crew neckline cutout
-            if (ax < w_neck) {
-                const y_collar = 0.85 + 0.21 * Math.pow(ax / w_neck, 2);
-                if (y > y_collar) return false;
-            }
-
-            // Shoulder and top sleeve seam
-            let y_top: number;
-            if (ax <= 0.70) {
-                y_top = 1.06 - (ax - w_neck) * (0.12 / (0.70 - w_neck));
-            } else if (ax <= 1.28) {
-                y_top = 0.94 - (ax - 0.70) * (0.29 / (1.28 - 0.70));
-            } else {
-                return false;
-            }
-            if (y > y_top) return false;
-
-            // Short sleeve opening and underarm
-            if (ax > 0.58) {
-                if (ax > 1.28) return false;
-                // Sleeve cuff: from (1.28, 0.65) to (1.10, 0.26)
-                if (ax >= 1.10) {
-                    const y_cuff = 0.26 + (ax - 1.10) * (0.39 / 0.18);
-                    if (y < y_cuff) return false;
-                } else {
-                    // Underarm: from (1.10, 0.26) to (0.58, 0.35)
-                    const y_under = 0.35 - (ax - 0.58) * (0.09 / 0.52);
-                    if (y < y_under) return false;
-                }
-            } else {
-                // Torso / waist contour
-                const w_torso = 0.58 + 0.04 * Math.pow((y + 0.3) / 0.95, 2);
-                if (ax > w_torso) return false;
-            }
-
-            // Curved bottom hem
-            const y_bottom =
-                -1.25 - 0.02 * Math.cos((ax / 0.62) * Math.PI * 0.5);
-            if (y < y_bottom) return false;
-
-            return true;
-        }
-
-        const grid: number[][] = [];
         const parts: Particle[] = [];
         const uvs: number[] = [];
-
-        for (let j = 0; j <= resY; j++) {
-            const row: number[] = [];
-            const v = j / resY;
-            const y = minY + v * (maxY - minY);
-            for (let i = 0; i <= resX; i++) {
-                const u = i / resX;
-                const x = minX + u * (maxX - minX);
-                if (isInsideShirt(x, y)) {
-                    const idx = parts.length;
-                    const ax = Math.abs(x);
-
-                    // Natural 3D body curvature around chest/torso
-                    let z = 0;
-                    if (ax <= 0.65) {
-                        z = 0.07 * Math.cos((ax / 0.65) * (Math.PI / 2));
-                    }
-
-                    // Fix points along the hanger / shoulder line
-                    const isShoulderFixed =
-                        y >= 0.88 && ax >= 0.26 && ax <= 0.70;
-
-                    const pos = new THREE.Vector3(x, y, z);
-                    parts.push({
-                        position: pos.clone(),
-                        previous: pos.clone(),
-                        original: pos.clone(),
-                        acceleration: new THREE.Vector3(),
-                        fixed: isShoulderFixed,
-                        mass,
-                        invMass: isShoulderFixed ? 0 : 1 / mass,
-                        isCollar: y >= 0.82 && ax <= 0.32,
-                    });
-
-                    // Normalized UV mapping
-                    uvs.push(
-                        (x - minX) / (maxX - minX),
-                        (y - minY) / (maxY - minY),
-                    );
-                    row.push(idx);
-                } else {
-                    row.push(-1);
-                }
-            }
-            grid.push(row);
-        }
-
-        // Generate triangles
         const indices: number[] = [];
-        for (let j = 0; j < resY; j++) {
-            for (let i = 0; i < resX; i++) {
-                const p00 = grid[j][i];
-                const p10 = grid[j][i + 1];
-                const p01 = grid[j + 1][i];
-                const p11 = grid[j + 1][i + 1];
+        const constrs: Constraint[] = [];
 
-                if (p00 !== -1 && p10 !== -1 && p01 !== -1) {
-                    indices.push(p00, p10, p01);
-                }
-                if (p10 !== -1 && p11 !== -1 && p01 !== -1) {
-                    indices.push(p10, p11, p01);
-                }
-            }
+        function addParticle(
+            pos: THREE.Vector3,
+            isFixed: boolean,
+            isCollar = false,
+        ): number {
+            const idx = parts.length;
+            parts.push({
+                position: pos.clone(),
+                previous: pos.clone(),
+                original: pos.clone(),
+                acceleration: new THREE.Vector3(),
+                mass,
+                invMass: isFixed ? 0 : 1 / mass,
+                fixed: isFixed,
+                isCollar,
+            });
+            return idx;
         }
 
-        // Generate cloth structural, shear and bending springs
-        const constrs: Constraint[] = [];
         function addConstraint(p1: number, p2: number, stiffness = 1.0) {
             if (
-                p1 !== -1 &&
-                p2 !== -1 &&
-                p1 !== undefined &&
-                p2 !== undefined
+                p1 >= 0 &&
+                p2 >= 0 &&
+                p1 < parts.length &&
+                p2 < parts.length &&
+                p1 !== p2
             ) {
                 const dist = parts[p1].position.distanceTo(parts[p2].position);
                 constrs.push({ a: p1, b: p2, restDistance: dist, stiffness });
             }
         }
 
-        for (let j = 0; j <= resY; j++) {
-            for (let i = 0; i <= resX; i++) {
-                const p = grid[j][i];
-                if (p === -1) continue;
-                // Structural constraints
-                if (i + 1 <= resX) addConstraint(p, grid[j][i + 1], 1.0);
-                if (j + 1 <= resY) addConstraint(p, grid[j + 1][i], 1.0);
-                // Shear constraints
-                if (i + 1 <= resX && j + 1 <= resY)
-                    addConstraint(p, grid[j + 1][i + 1], 0.75);
-                if (i - 1 >= 0 && j + 1 <= resY)
-                    addConstraint(p, grid[j + 1][i - 1], 0.75);
-                // Bending constraints (fabric stiffness against crumpling)
-                if (i + 2 <= resX) addConstraint(p, grid[j][i + 2], 0.45);
-                if (j + 2 <= resY) addConstraint(p, grid[j + 2][i], 0.45);
+        // Unified Garment Grid Dimensions
+        const Nu = 36; // Columns horizontally from Left Cuff (0) -> Torso (8..28) -> Right Cuff (36)
+        const Nv = 26; // Rows vertically from Bottom/Underarm (0) -> Shoulder/Top (26)
+
+        const frontGrid: number[][] = [];
+        const backGrid: number[][] = [];
+
+        function computeVertex(
+            i: number,
+            j: number,
+            isBack: boolean,
+        ): {
+            pos: THREE.Vector3;
+            uv: THREE.Vector2;
+            isFixed: boolean;
+            isCollar: boolean;
+        } {
+            const u = i / Nu;
+            const v = j / Nv;
+
+            let x: number;
+            let y: number;
+            let z: number;
+            let isFixed = false;
+            let isCollar = false;
+
+            if (i < 8) {
+                // --- Left Sleeve (columns 0..7) ---
+                // Continuous extension from left shoulder & underarm out to left cuff
+                const t = i / 7; // 0 at cuff, 1 at torso/armhole boundary
+                x = -1.28 + t * (-0.60 - -1.28);
+
+                // Sleeve bottom seam and top seam
+                const yBot = 0.32 + t * (0.35 - 0.32);
+                const yTop = 0.68 + t * (0.92 - 0.68);
+                y = yBot + v * (yTop - yBot);
+
+                // 3D cylindrical sleeve depth (open circular hole at cuff i=0)
+                const radius = (yTop - yBot) * 0.46;
+                const depth = radius * Math.sin(v * Math.PI);
+                z = isBack ? -depth : depth;
+
+                // Welded at top and bottom sleeve seams
+                if (v === 0 || v === 1) z = 0;
+            } else if (i > 28) {
+                // --- Right Sleeve (columns 29..36) ---
+                // Continuous extension from right shoulder & underarm out to right cuff
+                const t = (i - 28) / 8; // 0 at torso/armhole boundary, 1 at cuff
+                x = 0.60 + t * (1.28 - 0.60);
+
+                const yBot = 0.35 + t * (0.32 - 0.35);
+                const yTop = 0.92 + t * (0.68 - 0.92);
+                y = yBot + v * (yTop - yBot);
+
+                const radius = (yTop - yBot) * 0.46;
+                const depth = radius * Math.sin(v * Math.PI);
+                z = isBack ? -depth : depth;
+
+                if (v === 0 || v === 1) z = 0;
+            } else {
+                // --- Torso, Chest, Shoulders & Collar (columns 8..28) ---
+                const tTorso = (i - 8) / 20; // 0 at left side seam, 1 at right side seam
+
+                // Bottom hem curve
+                const yBot =
+                    -1.25 - 0.02 * Math.cos((tTorso - 0.5) * Math.PI);
+                let yTop: number;
+
+                if (i <= 13) {
+                    // Left Shoulder (columns 8..13)
+                    const tSh = (i - 8) / 5;
+                    x = -0.60 + tSh * (-0.28 - -0.60);
+                    yTop = 0.92 + tSh * (1.05 - 0.92);
+                    // Fixed on left wooden hanger bar
+                    if (j === Nv) isFixed = true;
+                } else if (i >= 23) {
+                    // Right Shoulder (columns 23..28)
+                    const tSh = (i - 23) / 5;
+                    x = 0.28 + tSh * (0.60 - 0.28);
+                    yTop = 1.05 - tSh * (1.05 - 0.92);
+                    // Fixed on right wooden hanger bar
+                    if (j === Nv) isFixed = true;
+                } else {
+                    // Neck Collar Scoop (columns 14..22)
+                    const s = (i - 18) / 4.5; // in [-1, 1]
+                    x = 0.28 * s;
+                    // Front crewneck dips down cleanly; back stays high
+                    const scoopFront =
+                        1.05 - 0.27 * Math.pow(Math.max(0, 1 - s * s), 0.65);
+                    const scoopBack =
+                        1.05 - 0.07 * Math.pow(Math.max(0, 1 - s * s), 0.65);
+                    yTop = isBack ? scoopBack : scoopFront;
+                    if (j >= Nv - 2) isCollar = true;
+                }
+
+                // Smooth contoured torso width from hem to underarm
+                if (v < 0.62) {
+                    const yMid = yBot + (v * (0.35 - yBot)) / 0.62;
+                    const w =
+                        0.58 + 0.035 * Math.pow((yMid + 0.45) / 0.8, 2);
+                    x = -w + 2 * w * tTorso;
+                    y = yBot + v * (yTop - yBot);
+                } else {
+                    y = yBot + v * (yTop - yBot);
+                }
+
+                // 3D Chest & Torso Volume Depth
+                const depthFactor = Math.sin(
+                    Math.min(1, v * 1.4) * Math.PI * 0.5,
+                );
+                const bodyDepth =
+                    0.085 * depthFactor * Math.cos((tTorso - 0.5) * Math.PI);
+                z = isBack ? -bodyDepth : bodyDepth;
+
+                // Welded at side seams
+                if (i === 8 || i === 28) {
+                    z = 0;
+                }
+            }
+
+            // Normalized UV mapping across unified garment
+            const uvX = 0.5 + (x / 1.5) * 0.45;
+            const uvY = (y - -1.30) / (1.15 - -1.30);
+
+            return {
+                pos: new THREE.Vector3(x, y, z),
+                uv: new THREE.Vector2(
+                    Math.max(0, Math.min(1, uvX)),
+                    Math.max(0, Math.min(1, uvY)),
+                ),
+                isFixed,
+                isCollar,
+            };
+        }
+
+        // Generate Front and Back Particle Grids
+        for (let j = 0; j <= Nv; j++) {
+            const frontRow: number[] = [];
+            const backRow: number[] = [];
+
+            for (let i = 0; i <= Nu; i++) {
+                // Front vertex
+                const vF = computeVertex(i, j, false);
+                const fIdx = addParticle(vF.pos, vF.isFixed, vF.isCollar);
+                uvs.push(vF.uv.x, vF.uv.y);
+                frontRow.push(fIdx);
+
+                // Back vertex
+                const vB = computeVertex(i, j, true);
+                const bIdx = addParticle(vB.pos, vB.isFixed, vB.isCollar);
+                uvs.push(vB.uv.x, vB.uv.y);
+                backRow.push(bIdx);
+            }
+
+            frontGrid.push(frontRow);
+            backGrid.push(backRow);
+        }
+
+        // Generate Triangles for Unified Front & Back Panels
+        for (let j = 0; j < Nv; j++) {
+            for (let i = 0; i < Nu; i++) {
+                // Front surface (outward facing CCW)
+                const f00 = frontGrid[j][i];
+                const f10 = frontGrid[j][i + 1];
+                const f01 = frontGrid[j + 1][i];
+                const f11 = frontGrid[j + 1][i + 1];
+
+                indices.push(f00, f10, f01);
+                indices.push(f10, f11, f01);
+
+                // Back surface (outward facing CCW)
+                const b00 = backGrid[j][i];
+                const b10 = backGrid[j][i + 1];
+                const b01 = backGrid[j + 1][i];
+                const b11 = backGrid[j + 1][i + 1];
+
+                indices.push(b00, b01, b10);
+                indices.push(b10, b01, b11);
+            }
+        }
+
+        // --- Garment Seam Welding & Constraints ---
+        // 1. Top Seams (Left sleeve top + left shoulder, Right shoulder + right sleeve top)
+        for (let i = 0; i <= Nu; i++) {
+            // Weld everywhere across the top EXCEPT the neck collar opening (columns 14..22)
+            if (i <= 13 || i >= 23) {
+                addConstraint(frontGrid[Nv][i], backGrid[Nv][i], 1.0);
+            }
+        }
+
+        // 2. Sleeve Under-Seams (Bottom of sleeves)
+        for (let i = 0; i <= 7; i++) {
+            addConstraint(frontGrid[0][i], backGrid[0][i], 1.0);
+        }
+        for (let i = 29; i <= Nu; i++) {
+            addConstraint(frontGrid[0][i], backGrid[0][i], 1.0);
+        }
+
+        // 3. Torso Side Seams (Bottom hem up to underarms at columns 8 and 28)
+        const nUnderarmRow = Math.floor(Nv * 0.62);
+        for (let j = 0; j <= nUnderarmRow; j++) {
+            // Left side seam
+            addConstraint(frontGrid[j][8], backGrid[j][8], 1.0);
+            // Right side seam
+            addConstraint(frontGrid[j][28], backGrid[j][28], 1.0);
+        }
+
+        // 4. Panel Internal Structural, Shear & Bending Springs
+        function addSurfaceSprings(grid: number[][]) {
+            for (let j = 0; j <= Nv; j++) {
+                for (let i = 0; i <= Nu; i++) {
+                    const p = grid[j][i];
+                    // Structural warp & weft
+                    if (i + 1 <= Nu) addConstraint(p, grid[j][i + 1], 1.0);
+                    if (j + 1 <= Nv) addConstraint(p, grid[j + 1][i], 1.0);
+                    // Shear diagonals
+                    if (i + 1 <= Nu && j + 1 <= Nv)
+                        addConstraint(p, grid[j + 1][i + 1], 0.88);
+                    if (i - 1 >= 0 && j + 1 <= Nv)
+                        addConstraint(p, grid[j + 1][i - 1], 0.88);
+                    // Bending stiffness across heavy cotton
+                    if (i + 2 <= Nu) addConstraint(p, grid[j][i + 2], 0.75);
+                    if (j + 2 <= Nv) addConstraint(p, grid[j + 2][i], 0.75);
+                }
+            }
+        }
+
+        addSurfaceSprings(frontGrid);
+        addSurfaceSprings(backGrid);
+
+        // 5. Cross-panel Volume Springs (maintains natural 3D chest & torso garment separation)
+        for (let j = 2; j <= Nv - 2; j += 2) {
+            for (let i = 10; i <= 26; i += 2) {
+                addConstraint(frontGrid[j][i], backGrid[j][i], 0.35);
             }
         }
 
@@ -219,12 +333,13 @@
         return { geom, parts, constrs };
     }
 
-    const { geom, parts, constrs } = createShirtGeometry();
-    clothGeometry = geom;
-    particles = parts;
-    constraints = constrs;
+    const {
+        geom: clothGeometry,
+        parts: particles,
+        constrs: constraints,
+    } = createShirtGeometry();
 
-    // 2. Generate high-resolution fabric texture with UTXO branding & seams
+    // 2. High-resolution cotton streetwear texture
     function createFabricTexture(): THREE.CanvasTexture | null {
         if (typeof document === "undefined") return null;
         const canvas = document.createElement("canvas");
@@ -234,25 +349,25 @@
         if (!ctx) return null;
 
         // Dark charcoal obsidian fabric base
-        ctx.fillStyle = "#181a20";
+        ctx.fillStyle = "#16181e";
         ctx.fillRect(0, 0, 1024, 1024);
 
-        // Cotton micro-weave texture
+        // Dense heavyweight cotton micro-weave texture
         const imgData = ctx.getImageData(0, 0, 1024, 1024);
         const data = imgData.data;
         for (let i = 0; i < data.length; i += 4) {
-            const noise = (Math.random() - 0.5) * 16;
+            const noise = (Math.random() - 0.5) * 14;
             data[i] = Math.min(255, Math.max(0, data[i] + noise));
             data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
             data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
         }
         ctx.putImageData(imgData, 0, 0);
 
-        // Collar ribbing line
-        ctx.strokeStyle = "#252833";
-        ctx.lineWidth = 14;
+        // Collar ribbing arc
+        ctx.strokeStyle = "#232630";
+        ctx.lineWidth = 16;
         ctx.beginPath();
-        ctx.arc(512, 905, 120, 0, Math.PI);
+        ctx.arc(512, 900, 125, 0, Math.PI);
         ctx.stroke();
 
         // Bottom hem stitching
@@ -260,31 +375,30 @@
         ctx.lineWidth = 2.5;
         ctx.setLineDash([6, 5]);
         ctx.beginPath();
-        ctx.moveTo(180, 36);
-        ctx.lineTo(844, 36);
-        ctx.moveTo(180, 45);
-        ctx.lineTo(844, 45);
+        ctx.moveTo(140, 36);
+        ctx.lineTo(884, 36);
+        ctx.moveTo(140, 45);
+        ctx.lineTo(884, 45);
         ctx.stroke();
 
-        // Sleeve cuff stitching
+        // Sleeve cuff stitching lines
         ctx.beginPath();
-        ctx.moveTo(40, 715);
-        ctx.lineTo(100, 620);
-        ctx.moveTo(984, 715);
-        ctx.lineTo(924, 620);
+        ctx.moveTo(30, 680);
+        ctx.lineTo(90, 580);
+        ctx.moveTo(994, 680);
+        ctx.lineTo(934, 580);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Chest graphic typography: UTXO WEAR
+        // Front chest graphic typography: UTXO WEAR
         const chestX = 512;
-        const chestY = 670;
+        const chestY = 660;
 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        // Modern glowing clean streetwear logo
         ctx.fillStyle = "#f8fafc";
-        ctx.font = "900 46px system-ui, -apple-system, sans-serif";
+        ctx.font = "900 48px system-ui, -apple-system, sans-serif";
         ctx.letterSpacing = "6px";
         ctx.fillText("UTXO", chestX, chestY - 12);
 
@@ -381,43 +495,15 @@
         };
     });
 
-    // 3. Realistic cloth physics simulation
-    let time = 0;
+    // 3. Realistic cloth physics simulation (Gravity + Heavy Cotton Drag Response)
     useTask((delta) => {
-        time += delta;
         const deltaTime = Math.min(delta, 0.016);
-
-        // Ambient natural cloth wave and subtle draft
         const gravity = new THREE.Vector3(0, -9.8, 0);
 
         particles.forEach((particle) => {
             if (particle.fixed) return;
-
             particle.acceleration.set(0, 0, 0);
-
-            // Gravity
-            particle.acceleration.add(
-                gravity.clone().multiplyScalar(particle.mass),
-            );
-
-            // Gentle organic wave / breeze effect across the fabric
-            const distFromTop = (1.1 - particle.original.y) / 2.3;
-            const waveX = Math.sin(
-                time * windSpeed * 1.5 + particle.original.y * 2.5,
-            );
-            const waveZ = Math.cos(
-                time * windSpeed +
-                    particle.original.x * 2.0 +
-                    particle.original.y * 1.5,
-            );
-
-            const wind = new THREE.Vector3(
-                waveX * 0.08 * distFromTop,
-                -0.02 * distFromTop,
-                (waveZ * 0.28 + 0.12) * windStrength * Math.pow(distFromTop, 1.2),
-            );
-
-            particle.acceleration.add(wind);
+            particle.acceleration.add(gravity);
         });
 
         // Verlet integration
@@ -427,7 +513,7 @@
             const vel = particle.position.clone().sub(particle.previous);
             particle.previous.copy(particle.position);
 
-            // Damping
+            // Heavy fabric damping
             vel.multiplyScalar(1 - damping);
 
             const acc = particle.acceleration
@@ -439,16 +525,15 @@
         // Interactive mouse drag pull
         if (isDragging && draggedIndex !== -1) {
             const p = particles[draggedIndex];
-            p.position.lerp(dragTarget, 0.5);
+            p.position.lerp(dragTarget, 0.45);
             p.previous.copy(p.position);
 
-            // Influence neighboring vertices with smooth falloff
-            const radius = 0.55;
+            const radius = 0.50;
             particles.forEach((other, idx) => {
                 if (idx === draggedIndex || other.fixed) return;
                 const d = other.original.distanceTo(p.original);
                 if (d < radius) {
-                    const factor = Math.pow(1 - d / radius, 2) * 0.28;
+                    const factor = Math.pow(1 - d / radius, 2) * 0.22;
                     other.position.add(
                         dragTarget
                             .clone()
@@ -459,8 +544,8 @@
             });
         }
 
-        // Spring relaxation iterations
-        for (let iter = 0; iter < 4; iter++) {
+        // Spring relaxation iterations (8 iterations for rigid, non-rubbery garment structure)
+        for (let iter = 0; iter < 8; iter++) {
             constraints.forEach((constraint) => {
                 const pa = particles[constraint.a];
                 const pb = particles[constraint.b];
@@ -470,7 +555,8 @@
                 if (dist === 0) return;
 
                 const diffNormalized = diff.clone().divideScalar(dist);
-                const deltaDist = (dist - constraint.restDistance) * constraint.stiffness;
+                const deltaDist =
+                    (dist - constraint.restDistance) * constraint.stiffness;
 
                 if (!pa.fixed && !pb.fixed) {
                     pa.position.add(
@@ -491,7 +577,7 @@
             });
         }
 
-        // Update geometry positions and compute normals
+        // Update geometry positions and compute surface normals
         const positions = clothGeometry.attributes.position;
         particles.forEach((particle, i) => {
             positions.setXYZ(
@@ -511,14 +597,14 @@
     const hookColor = "#94a3b8"; // Brushed metallic silver
 </script>
 
-<!-- Fixed front-facing camera (no rotating plane / stable display) -->
+<!-- Fixed front-facing camera -->
 <T.PerspectiveCamera makeDefault position={[0, -0.05, 3.75]} fov={45} />
 
-<!-- Studio Lighting -->
-<T.DirectionalLight position={[2, 4, 3.5]} intensity={1.8} castShadow />
-<T.DirectionalLight position={[-2, -1, 2.5]} intensity={0.7} />
-<T.DirectionalLight position={[0, 4, -2]} intensity={0.5} />
-<T.AmbientLight intensity={0.65} />
+<!-- Studio Lighting with ambient interior fill -->
+<T.DirectionalLight position={[2.5, 4, 3.5]} intensity={1.8} castShadow />
+<T.DirectionalLight position={[-2.5, -0.5, 2.5]} intensity={0.8} />
+<T.DirectionalLight position={[0, 4, -2.5]} intensity={0.6} />
+<T.AmbientLight intensity={0.7} />
 
 <!-- Sleek Minimalist Hanger Group -->
 <T.Group position={[0, 0, 0]}>
@@ -541,10 +627,7 @@
         />
     </T.Mesh>
     <!-- Left Shoulder Bar -->
-    <T.Mesh
-        position={[-0.43, 1.0, 0]}
-        rotation={[0, 0, -0.15]}
-    >
+    <T.Mesh position={[-0.43, 1.0, 0]} rotation={[0, 0, -0.15]}>
         <T.CylinderGeometry args={[0.024, 0.028, 0.72, 16]} />
         <T.MeshStandardMaterial
             color={hangerColor}
@@ -553,10 +636,7 @@
         />
     </T.Mesh>
     <!-- Right Shoulder Bar -->
-    <T.Mesh
-        position={[0.43, 1.0, 0]}
-        rotation={[0, 0, 0.15]}
-    >
+    <T.Mesh position={[0.43, 1.0, 0]} rotation={[0, 0, 0.15]}>
         <T.CylinderGeometry args={[0.024, 0.028, 0.72, 16]} />
         <T.MeshStandardMaterial
             color={hangerColor}
@@ -575,13 +655,8 @@
     </T.Mesh>
 </T.Group>
 
-<!-- 3D Shirt Mesh -->
-<T.Mesh
-    bind:ref={clothMesh}
-    geometry={clothGeometry}
-    castShadow
-    receiveShadow
->
+<!-- 3D Hollow Garment Mesh with Open Sleeves, Collar & Waist -->
+<T.Mesh bind:ref={clothMesh} geometry={clothGeometry} castShadow receiveShadow>
     {#if shirtTexture}
         <T.MeshStandardMaterial
             map={shirtTexture}
@@ -591,7 +666,7 @@
         />
     {:else}
         <T.MeshStandardMaterial
-            color="#181a20"
+            color="#16181e"
             side={THREE.DoubleSide}
             roughness={0.85}
             metalness={0.08}

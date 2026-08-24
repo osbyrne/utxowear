@@ -22,27 +22,12 @@ const products = await getPrintifyProducts();
       <Header />
 
       <main class="grid gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] lg:gap-10 lg:px-10 lg:py-10 xl:gap-14 xl:px-14">
-        <section class="min-w-0" aria-labelledby="featured-heading">
-          <div class="mb-5 max-w-2xl sm:mb-6">
-            <p class="text-xs font-bold uppercase tracking-[0.3em] text-primary">UTXOWEAR / 001</p>
-            <h1 id="featured-heading" class="mt-2 text-3xl font-black tracking-tight sm:text-4xl xl:text-5xl">
-              Built for the next block.
-            </h1>
-            <p class="mt-3 max-w-xl text-sm leading-6 text-base-content/70 sm:text-base">
-              Heavyweight essentials inspired by Bitcoin's most durable primitive. Drag the fabric
-              to explore the first release.
-            </p>
-          </div>
-
+        <section class="min-w-0" aria-label="Interactive product preview">
           <ShirtMount client:load />
         </section>
 
-        <section id="shop" class="min-w-0 lg:pt-1" aria-labelledby="shop-heading">
-          <div class="mb-5 flex items-end justify-between gap-4 border-b border-base-300 pb-4">
-            <div>
-              <p class="text-xs font-bold uppercase tracking-[0.25em] text-primary">Collection 01</p>
-              <h2 id="shop-heading" class="mt-1 text-2xl font-black tracking-tight">Shop the drop</h2>
-            </div>
+        <section id="shop" class="min-w-0 lg:pt-1" aria-label="Shop">
+          <div class="mb-5 flex justify-end border-b border-base-300 pb-4">
             <span class="shrink-0 text-sm text-base-content/60">
               {products.length} {products.length === 1 ? 'piece' : 'pieces'}
             </span>

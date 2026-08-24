@@ -1,8 +1,14 @@
 ---
 import Product from './Product.astro';
-import products from '../../products.json';
+import type { StoreProduct } from '../lib/printify';
+
+type Props = {
+  products: StoreProduct[];
+};
+
+const { products } = Astro.props;
 ---
 
-<section class="grid gap-4 sm:grid-cols-2">
-  {products.map((productName) => <Product productName={productName} />)}
-</section>
+<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-1 xl:grid-cols-2">
+  {products.map((product) => <Product product={product} />)}
+</div>

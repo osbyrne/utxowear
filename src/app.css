@@ -1,2 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap");
 @import "tailwindcss";
 @plugin "daisyui";
+
+.font-instrument-serif {
+  font-family: "Instrument Serif", Georgia, serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}

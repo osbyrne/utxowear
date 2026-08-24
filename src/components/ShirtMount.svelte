@@ -4,8 +4,7 @@
 </script>
 
 <div
-    class="relative w-full overflow-hidden rounded-2xl bg-base-200/50 cursor-grab active:cursor-grabbing touch-none select-none shadow-inner"
-    style="height: 70vh; min-height: 500px;"
+    class="relative h-[clamp(22rem,58vh,42rem)] w-full cursor-grab touch-none select-none overflow-hidden rounded-2xl bg-base-200/50 shadow-inner active:cursor-grabbing sm:h-[clamp(28rem,64vh,46rem)] lg:h-[clamp(34rem,66vh,50rem)]"
 >
     <Canvas>
         <Shirt />

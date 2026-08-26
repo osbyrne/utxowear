@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, type ThreeEvent, useFrame } from "@react-three/fiber";
 import {
   Body,
@@ -104,6 +104,8 @@ function Cloth() {
   const simulation = useMemo(createClothSimulation, []);
   const dragConstraint = useRef<PointToPointConstraint | null>(null);
   const draggedBody = useRef<Body | null>(null);
+  const activePointerId = useRef<number | null>(null);
+  const captureTarget = useRef<PointerCaptureTarget | null>(null);
   const dragPlane = useRef(new Plane());
   const dragPoint = useRef(new Vector3());
   const cameraDirection = useRef(new Vector3());
@@ -111,37 +113,71 @@ function Cloth() {
     () => new PlaneGeometry(CLOTH_WIDTH, CLOTH_HEIGHT, X_SEGMENTS, Y_SEGMENTS),
     [],
   );
-  useEffect(() => {
-    return () => {
+
+  const finishDrag = useCallback(
+    (pointerId?: number) => {
+      if (
+        activePointerId.current === null ||
+        (pointerId !== undefined && pointerId !== activePointerId.current)
+      ) {
+        return;
+      }
+
       if (dragConstraint.current) {
         simulation.world.removeConstraint(dragConstraint.current);
+        dragConstraint.current = null;
       }
+      if (draggedBody.current) {
+        draggedBody.current.velocity.scale(
+          RELEASE_VELOCITY_RETENTION,
+          draggedBody.current.velocity,
+        );
+        draggedBody.current = null;
+      }
+
+      const capturedPointerId = activePointerId.current;
+      const target = captureTarget.current;
+      if (target?.hasPointerCapture(capturedPointerId)) {
+        target.releasePointerCapture(capturedPointerId);
+      }
+      activePointerId.current = null;
+      captureTarget.current = null;
+    },
+    [simulation],
+  );
+
+  useEffect(() => {
+    const handlePointerEnd = (event: PointerEvent) =>
+      finishDrag(event.pointerId);
+    const handleWindowBlur = () => finishDrag();
+
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("blur", handleWindowBlur);
+      finishDrag();
       geometry.dispose();
     };
-  }, [geometry, simulation]);
+  }, [finishDrag, geometry]);
 
   const releaseDrag = (event: ThreeEvent<PointerEvent>) => {
-    if (!dragConstraint.current) return;
-
-    simulation.world.removeConstraint(dragConstraint.current);
-    dragConstraint.current = null;
-    if (draggedBody.current) {
-      draggedBody.current.velocity.scale(
-        RELEASE_VELOCITY_RETENTION,
-        draggedBody.current.velocity,
-      );
-    }
-    draggedBody.current = null;
-    const target = event.target as PointerCaptureTarget;
-    if (target.hasPointerCapture(event.pointerId)) {
-      target.releasePointerCapture(event.pointerId);
-    }
+    finishDrag(event.pointerId);
   };
 
   const startDrag = (event: ThreeEvent<PointerEvent>) => {
+    if (
+      event.button !== 0 ||
+      !event.isPrimary ||
+      activePointerId.current !== null
+    ) {
+      return;
+    }
+
     event.stopPropagation();
-    const target = event.target as PointerCaptureTarget;
-    target.setPointerCapture(event.pointerId);
 
     let closestBody: Body | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
@@ -161,6 +197,11 @@ function Cloth() {
     }
 
     if (!closestBody) return;
+
+    const target = event.target as PointerCaptureTarget;
+    target.setPointerCapture(event.pointerId);
+    activePointerId.current = event.pointerId;
+    captureTarget.current = target;
 
     event.camera.getWorldDirection(cameraDirection.current);
     dragPlane.current.setFromNormalAndCoplanarPoint(
@@ -189,7 +230,18 @@ function Cloth() {
   };
 
   const moveDrag = (event: ThreeEvent<PointerEvent>) => {
-    if (!dragConstraint.current || !draggedBody.current) return;
+    if (
+      event.pointerId !== activePointerId.current ||
+      !dragConstraint.current ||
+      !draggedBody.current
+    ) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+      finishDrag(event.pointerId);
+      return;
+    }
 
     event.stopPropagation();
     if (!event.ray.intersectPlane(dragPlane.current, dragPoint.current)) return;

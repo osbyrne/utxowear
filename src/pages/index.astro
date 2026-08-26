@@ -1,7 +1,7 @@
 ---
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import ShirtMount from '../components/ShirtMount.svelte';
+import Shirt from '../components/Shirt.tsx';
 import ProductList from '../components/ProductList.astro';
 import { getPrintifyProducts } from '../lib/printify';
 import '../app.css';
@@ -22,8 +22,9 @@ const products = await getPrintifyProducts();
       <Header />
 
       <main class="grid gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] lg:gap-10 lg:px-10 lg:py-10 xl:gap-14 xl:px-14">
-        <section class="min-w-0" aria-label="Interactive product preview">
-          <ShirtMount client:load />
+
+        <section class="min-w-0" aria-label="React product preview">
+          <Shirt client:load />
         </section>
 
         <section id="shop" class="min-w-0 lg:pt-1" aria-label="Shop">

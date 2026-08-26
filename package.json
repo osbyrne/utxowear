@@ -14,8 +14,6 @@
     "@astrojs/react": "^6.0.4",
     "@react-three/fiber": "^9.7.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@threlte/core": "^8.5.16",
-    "@threlte/extras": "^9.21.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@types/three": "^0.185.4",

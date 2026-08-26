@@ -1,3 +1,0 @@
-- link products to Printify
-    - read Printify API documentation
-- add pay with crytpo

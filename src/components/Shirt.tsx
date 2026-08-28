@@ -4,9 +4,9 @@ import {
   Body,
   DistanceConstraint,
   GSSolver,
-  Particle,
   PointToPointConstraint,
   SAPBroadphase,
+  Sphere,
   Vec3,
   World,
 } from "cannon-es";
@@ -23,6 +23,8 @@ const ROWS = 26;
 const SHIRT_WIDTH = 4.4;
 const SHIRT_HEIGHT = 4.4;
 const PARTICLE_MASS = 0.12;
+// Keep the collision diameter slightly smaller than the grid spacing.
+const COLLISION_RADIUS = Math.min(SHIRT_WIDTH / COLUMNS, SHIRT_HEIGHT / ROWS) * 0.45;
 const FIXED_TIME_STEP = 1 / 60;
 const LINEAR_DAMPING = 0.48;
 const RELEASE_VELOCITY_RETENTION = 0.22;
@@ -53,6 +55,8 @@ function createShirtSimulation(): ShirtSimulation {
   const world = new World({ gravity: new Vec3(0, -12.5, 0) });
   world.allowSleep = false;
   world.broadphase = new SAPBroadphase(world);
+  world.defaultContactMaterial.friction = 0.1;
+  world.defaultContactMaterial.restitution = 0;
 
   const solver = new GSSolver();
   solver.iterations = 16;
@@ -83,8 +87,9 @@ function createShirtSimulation(): ShirtSimulation {
     const body = new Body({
       mass: pinnedAtTopCorner ? 0 : PARTICLE_MASS,
       linearDamping: LINEAR_DAMPING,
+      fixedRotation: true,
       position: new Vec3(point.x, point.y, point.z),
-      shape: new Particle(),
+      shape: new Sphere(COLLISION_RADIUS),
     });
 
     world.addBody(body);
@@ -107,14 +112,15 @@ function createShirtSimulation(): ShirtSimulation {
       firstPoint.y - secondPoint.y,
       firstPoint.z - secondPoint.z,
     );
-    world.addConstraint(
-      new DistanceConstraint(
-        bodies[first],
-        bodies[second],
-        distance,
-        stiffness,
-      ),
+    const constraint = new DistanceConstraint(
+      bodies[first],
+      bodies[second],
+      distance,
+      stiffness,
     );
+    // Connected vertices must be free to approach each other as the cloth folds.
+    constraint.collideConnected = false;
+    world.addConstraint(constraint);
   };
 
   for (let row = 0; row < ROWS; row += 1) {

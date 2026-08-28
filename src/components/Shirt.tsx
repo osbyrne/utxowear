@@ -12,24 +12,34 @@ import {
 } from "cannon-es";
 import {
   BufferAttribute,
+  BufferGeometry,
   DoubleSide,
   Plane,
-  PlaneGeometry,
   Vector3,
 } from "three";
 
-const X_SEGMENTS = 20;
-const Y_SEGMENTS = 20;
-const CLOTH_WIDTH = 3;
-const CLOTH_HEIGHT = 3;
-const PARTICLE_MASS = 0.8;
+const COLUMNS = 24;
+const ROWS = 26;
+const SHIRT_WIDTH = 4.4;
+const SHIRT_HEIGHT = 4.4;
+const PARTICLE_MASS = 0.12;
 const FIXED_TIME_STEP = 1 / 60;
-const LINEAR_DAMPING = 0.45;
-const RELEASE_VELOCITY_RETENTION = 0.25;
+const LINEAR_DAMPING = 0.48;
+const RELEASE_VELOCITY_RETENTION = 0.22;
 
-type ClothSimulation = {
+type GridPoint = {
+  column: number;
+  row: number;
+  x: number;
+  y: number;
+  z: number;
+};
+
+type ShirtSimulation = {
   bodies: Body[];
   cursorBody: Body;
+  geometry: BufferGeometry;
+  points: GridPoint[];
   world: World;
 };
 
@@ -39,56 +49,125 @@ type PointerCaptureTarget = EventTarget & {
   setPointerCapture(pointerId: number): void;
 };
 
-function createClothSimulation(): ClothSimulation {
-  const world = new World({ gravity: new Vec3(0, -9.81 * 1.4, 0) });
+function createShirtSimulation(): ShirtSimulation {
+  const world = new World({ gravity: new Vec3(0, -12.5, 0) });
   world.allowSleep = false;
   world.broadphase = new SAPBroadphase(world);
 
   const solver = new GSSolver();
-  solver.iterations = 18;
+  solver.iterations = 16;
   solver.tolerance = 0.001;
   world.solver = solver;
 
-  const bodies: Body[] = [];
-  const horizontalSpacing = CLOTH_WIDTH / X_SEGMENTS;
-  const verticalSpacing = CLOTH_HEIGHT / Y_SEGMENTS;
-  const index = (x: number, y: number) => x + y * (X_SEGMENTS + 1);
+  const columnStep = SHIRT_WIDTH / COLUMNS;
+  const rowStep = SHIRT_HEIGHT / ROWS;
+  const nodeIndex = (column: number, row: number) => row * (COLUMNS + 1) + column;
 
-  for (let y = 0; y <= Y_SEGMENTS; y += 1) {
-    for (let x = 0; x <= X_SEGMENTS; x += 1) {
-      const pinned = y === 0;
-      const body = new Body({
-        mass: pinned ? 0 : PARTICLE_MASS,
-        linearDamping: LINEAR_DAMPING,
-        position: new Vec3(
-          (x / X_SEGMENTS - 0.5) * CLOTH_WIDTH,
-          1.8 - (y / Y_SEGMENTS) * CLOTH_HEIGHT,
-          0,
-        ),
-        shape: new Particle(),
-      });
+  const points: GridPoint[] = [];
 
-      bodies.push(body);
-      world.addBody(body);
+  for (let row = 0; row <= ROWS; row += 1) {
+    for (let column = 0; column <= COLUMNS; column += 1) {
+      const x = -SHIRT_WIDTH / 2 + column * columnStep;
+      const y = SHIRT_HEIGHT / 2 - row * rowStep;
+      const z =
+        0.035 * Math.cos(x * 3.1) * Math.sin((y + 2.2) * 2.4) -
+        0.025 * (x / 2.2) ** 2;
+
+      points.push({ column, row, x, y, z });
     }
   }
 
-  const connect = (first: number, second: number, distance: number) => {
+  const bodies = points.map((point) => {
+    const pinnedAtTopCorner =
+      point.row === 0 && (point.column === 0 || point.column === COLUMNS);
+    const body = new Body({
+      mass: pinnedAtTopCorner ? 0 : PARTICLE_MASS,
+      linearDamping: LINEAR_DAMPING,
+      position: new Vec3(point.x, point.y, point.z),
+      shape: new Particle(),
+    });
+
+    world.addBody(body);
+    return body;
+  });
+
+  const indices: number[] = [];
+  const connectedPairs = new Set<string>();
+  const connect = (first: number, second: number, stiffness = 1e5) => {
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
+    const pairKey = `${low}:${high}`;
+    if (connectedPairs.has(pairKey)) return;
+    connectedPairs.add(pairKey);
+
+    const firstPoint = points[first];
+    const secondPoint = points[second];
+    const distance = Math.hypot(
+      firstPoint.x - secondPoint.x,
+      firstPoint.y - secondPoint.y,
+      firstPoint.z - secondPoint.z,
+    );
     world.addConstraint(
-      new DistanceConstraint(bodies[first], bodies[second], distance, 1e5),
+      new DistanceConstraint(
+        bodies[first],
+        bodies[second],
+        distance,
+        stiffness,
+      ),
     );
   };
 
-  for (let y = 0; y <= Y_SEGMENTS; y += 1) {
-    for (let x = 0; x <= X_SEGMENTS; x += 1) {
-      if (x < X_SEGMENTS) {
-        connect(index(x, y), index(x + 1, y), horizontalSpacing);
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let column = 0; column < COLUMNS; column += 1) {
+      const topLeft = nodeIndex(column, row);
+      const topRight = nodeIndex(column + 1, row);
+      const bottomLeft = nodeIndex(column, row + 1);
+      const bottomRight = nodeIndex(column + 1, row + 1);
+
+      // Alternating diagonals avoid a visible directional bias in the fabric.
+      if ((column + row) % 2 === 0) {
+        indices.push(topLeft, bottomLeft, topRight);
+        indices.push(topRight, bottomLeft, bottomRight);
+        connect(topLeft, bottomRight);
+      } else {
+        indices.push(topLeft, bottomLeft, bottomRight);
+        indices.push(topLeft, bottomRight, topRight);
+        connect(topRight, bottomLeft);
       }
-      if (y < Y_SEGMENTS) {
-        connect(index(x, y), index(x, y + 1), verticalSpacing);
-      }
+
+      connect(topLeft, topRight);
+      connect(topLeft, bottomLeft);
+      connect(topRight, bottomRight);
+      connect(bottomLeft, bottomRight);
     }
   }
+
+  // Longer, softer links resist collapsing while still allowing broad folds.
+  points.forEach((point, pointIndex) => {
+    if (point.column + 2 <= COLUMNS) {
+      connect(pointIndex, nodeIndex(point.column + 2, point.row), 2.5e4);
+    }
+    if (point.row + 2 <= ROWS) {
+      connect(pointIndex, nodeIndex(point.column, point.row + 2), 2.5e4);
+    }
+  });
+
+  const positions = new Float32Array(points.length * 3);
+  const uvs = new Float32Array(points.length * 2);
+  points.forEach((point, index) => {
+    positions[index * 3] = point.x;
+    positions[index * 3 + 1] = point.y;
+    positions[index * 3 + 2] = point.z;
+    uvs[index * 2] = (point.x + SHIRT_WIDTH / 2) / SHIRT_WIDTH;
+    uvs[index * 2 + 1] = (point.y + SHIRT_HEIGHT / 2) / SHIRT_HEIGHT;
+  });
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
 
   const cursorBody = new Body({
     collisionResponse: false,
@@ -97,11 +176,11 @@ function createClothSimulation(): ClothSimulation {
   });
   world.addBody(cursorBody);
 
-  return { bodies, cursorBody, world };
+  return { bodies, cursorBody, geometry, points, world };
 }
 
-function Cloth() {
-  const simulation = useMemo(createClothSimulation, []);
+function ClothShirt() {
+  const simulation = useMemo(createShirtSimulation, []);
   const dragConstraint = useRef<PointToPointConstraint | null>(null);
   const draggedBody = useRef<Body | null>(null);
   const activePointerId = useRef<number | null>(null);
@@ -109,10 +188,6 @@ function Cloth() {
   const dragPlane = useRef(new Plane());
   const dragPoint = useRef(new Vector3());
   const cameraDirection = useRef(new Vector3());
-  const geometry = useMemo(
-    () => new PlaneGeometry(CLOTH_WIDTH, CLOTH_HEIGHT, X_SEGMENTS, Y_SEGMENTS),
-    [],
-  );
 
   const finishDrag = useCallback(
     (pointerId?: number) => {
@@ -160,11 +235,11 @@ function Cloth() {
       window.removeEventListener("pointercancel", handlePointerEnd);
       window.removeEventListener("blur", handleWindowBlur);
       finishDrag();
-      geometry.dispose();
+      simulation.geometry.dispose();
     };
-  }, [finishDrag, geometry]);
+  }, [finishDrag, simulation]);
 
-  const releaseDrag = (event: ThreeEvent<PointerEvent>) => {
+  const finishPointerDrag = (event: ThreeEvent<PointerEvent>) => {
     finishDrag(event.pointerId);
   };
 
@@ -181,21 +256,17 @@ function Cloth() {
 
     let closestBody: Body | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
-
     for (const body of simulation.bodies) {
       if (body.mass === 0) continue;
-
-      const dx = body.position.x - event.point.x;
-      const dy = body.position.y - event.point.y;
-      const dz = body.position.z - event.point.z;
-      const distance = dx * dx + dy * dy + dz * dz;
-
+      const distance =
+        (body.position.x - event.point.x) ** 2 +
+        (body.position.y - event.point.y) ** 2 +
+        (body.position.z - event.point.z) ** 2;
       if (distance < closestDistance) {
         closestDistance = distance;
         closestBody = body;
       }
     }
-
     if (!closestBody) return;
 
     const target = event.target as PointerCaptureTarget;
@@ -208,7 +279,6 @@ function Cloth() {
       cameraDirection.current,
       event.point,
     );
-
     simulation.cursorBody.position.set(
       event.point.x,
       event.point.y,
@@ -256,39 +326,52 @@ function Cloth() {
     draggedBody.current.wakeUp();
   };
 
-  useFrame((_, delta) => {
-    const positionAttribute = geometry.getAttribute(
+  useFrame(({ clock }, delta) => {
+    const elapsed = clock.getElapsedTime();
+    const positions = simulation.geometry.getAttribute(
       "position",
     ) as BufferAttribute;
 
-    simulation.world.step(FIXED_TIME_STEP, Math.min(delta, 0.05), 3);
-
     simulation.bodies.forEach((body, index) => {
-      positionAttribute.setXYZ(
+      if (body.mass === 0 || body === draggedBody.current) return;
+      const point = simulation.points[index];
+      const breeze =
+        Math.sin(elapsed * 1.15 + point.x * 1.7 + point.y * 0.55) * 0.018 +
+        Math.sin(elapsed * 0.62 - point.y * 2.1) * 0.01;
+      body.force.z += breeze;
+      body.force.x += breeze * 0.08;
+    });
+
+    simulation.world.step(FIXED_TIME_STEP, Math.min(delta, 0.05), 3);
+    simulation.bodies.forEach((body, index) => {
+      positions.setXYZ(
         index,
         body.position.x,
         body.position.y,
         body.position.z,
       );
     });
-
-    positionAttribute.needsUpdate = true;
-    geometry.computeVertexNormals();
+    positions.needsUpdate = true;
+    simulation.geometry.computeVertexNormals();
   });
 
   return (
     <mesh
-      geometry={geometry}
+      geometry={simulation.geometry}
       castShadow
+      frustumCulled={false}
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
-      onPointerUp={releaseDrag}
-      onPointerCancel={releaseDrag}
+      onPointerUp={finishPointerDrag}
+      onPointerCancel={finishPointerDrag}
     >
-      <meshStandardMaterial
-        color="#f4f4f5"
-        roughness={0.9}
+      <meshPhysicalMaterial
+        color="#f6f3ed"
+        roughness={0.88}
         metalness={0}
+        sheen={0.72}
+        sheenColor="#d8cec0"
+        sheenRoughness={0.82}
         side={DoubleSide}
       />
     </mesh>
@@ -298,16 +381,21 @@ function Cloth() {
 function Scene() {
   return (
     <>
-      <ambientLight intensity={1.1} />
+      <hemisphereLight />
       <directionalLight
-        position={[1, 1, 1]}
-        intensity={2.2}
-        color="#fff8ec"
+        position={[3.5, 5, 5]}
+        intensity={2.6}
+        color="#fff4df"
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
-      <Cloth />
+      <directionalLight position={[-4, 1, 3]} intensity={1} color="#fffaff" />
+      <ClothShirt />
+      <mesh position={[0, 0, -1]} receiveShadow>
+        <planeGeometry args={[7, 7]} />
+        <meshStandardMaterial color="#e9e5df" roughness={1} />
+      </mesh>
     </>
   );
 }
@@ -316,6 +404,8 @@ export default function Shirt() {
   return (
     <div
       id="canvas-container"
+      aria-label="Interactive rectangular cloth. Drag the fabric to move it."
+      role="img"
       style={{
         width: "100%",
         height: "clamp(28rem, 68vh, 46rem)",
@@ -324,10 +414,11 @@ export default function Shirt() {
       }}
     >
       <Canvas
-        camera={{ position: [4, 1, 7], fov: 35, near: 0.1, far: 50 }}
-        dpr={[1, 2]}
+        camera={{ position: [3.7, 0.25, 8.6], fov: 34, near: 0.1, far: 50 }}
+        dpr={[1, 1.75]}
         shadows
-        style={{ cursor: "grab", touchAction: "none" }}
+        gl={{ antialias: true, powerPreference: "high-performance" }}
+        style={{ cursor: "grab", touchAction: "grab" }}
       >
         <Scene />
       </Canvas>

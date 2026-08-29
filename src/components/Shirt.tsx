@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas, type ThreeEvent, useFrame } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useLoader } from "@react-three/fiber";
 import {
   Body,
   DistanceConstraint,
@@ -14,24 +14,20 @@ import {
   BufferAttribute,
   BufferGeometry,
   DoubleSide,
+  Mesh,
+  Object3D,
   Plane,
   Vector3,
 } from "three";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const COLUMNS = 24;
-const ROWS = 26;
-const SHIRT_WIDTH = 4.4;
-const SHIRT_HEIGHT = 4.4;
 const PARTICLE_MASS = 0.12;
-// Keep the collision diameter slightly smaller than the grid spacing.
-const COLLISION_RADIUS = Math.min(SHIRT_WIDTH / COLUMNS, SHIRT_HEIGHT / ROWS) * 0.45;
 const FIXED_TIME_STEP = 1 / 60;
 const LINEAR_DAMPING = 0.48;
 const RELEASE_VELOCITY_RETENTION = 0.22;
 
-type GridPoint = {
-  column: number;
-  row: number;
+type ClothPoint = {
   x: number;
   y: number;
   z: number;
@@ -41,7 +37,7 @@ type ShirtSimulation = {
   bodies: Body[];
   cursorBody: Body;
   geometry: BufferGeometry;
-  points: GridPoint[];
+  points: ClothPoint[];
   world: World;
 };
 
@@ -51,7 +47,40 @@ type PointerCaptureTarget = EventTarget & {
   setPointerCapture(pointerId: number): void;
 };
 
-function createShirtSimulation(): ShirtSimulation {
+function prepareShirtGeometry(scene: Object3D) {
+  let shirtMesh: Mesh | null = null;
+  let largestMeshVertexCount = 0;
+  scene.traverse((object) => {
+    const mesh = object as Mesh;
+    if (!mesh.isMesh || mesh.geometry.attributes.position.count <= largestMeshVertexCount) {
+      return;
+    }
+    shirtMesh = mesh;
+    largestMeshVertexCount = mesh.geometry.attributes.position.count;
+  });
+
+  const selectedShirtMesh = shirtMesh as Mesh | null;
+  if (!selectedShirtMesh) throw new Error("tshirt.glb does not contain a mesh.");
+
+  scene.traverse((object) => object.updateMatrixWorld());
+  const geometry = selectedShirtMesh.geometry.clone();
+  geometry.applyMatrix4(selectedShirtMesh.matrixWorld);
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox;
+  if (!bounds) throw new Error("Unable to calculate tshirt.glb bounds.");
+
+  // Center and size the imported model for the existing camera and floor.
+  const center = bounds.getCenter(new Vector3());
+  const size = bounds.getSize(new Vector3());
+  const scale = 4.4 / Math.max(size.x, size.y);
+  geometry.translate(-center.x, -center.y, -center.z);
+  geometry.scale(scale, scale, scale);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation {
   const world = new World({ gravity: new Vec3(0, -12.5, 0) });
   world.allowSleep = false;
   world.broadphase = new SAPBroadphase(world);
@@ -63,40 +92,72 @@ function createShirtSimulation(): ShirtSimulation {
   solver.tolerance = 0.001;
   world.solver = solver;
 
-  const columnStep = SHIRT_WIDTH / COLUMNS;
-  const rowStep = SHIRT_HEIGHT / ROWS;
-  const nodeIndex = (column: number, row: number) => row * (COLUMNS + 1) + column;
+  const geometry = sourceGeometry.clone();
+  const position = geometry.getAttribute("position") as BufferAttribute;
+  const points = Array.from({ length: position.count }, (_, index) => ({
+    x: position.getX(index),
+    y: position.getY(index),
+    z: position.getZ(index),
+  }));
+  const index = geometry.getIndex();
+  const indices = index
+    ? Array.from(index.array)
+    : Array.from({ length: position.count }, (_, vertexIndex) => vertexIndex);
 
-  const points: GridPoint[] = [];
-
-  for (let row = 0; row <= ROWS; row += 1) {
-    for (let column = 0; column <= COLUMNS; column += 1) {
-      const x = -SHIRT_WIDTH / 2 + column * columnStep;
-      const y = SHIRT_HEIGHT / 2 - row * rowStep;
-      const z =
-        0.035 * Math.cos(x * 3.1) * Math.sin((y + 2.2) * 2.4) -
-        0.025 * (x / 2.2) ** 2;
-
-      points.push({ column, row, x, y, z });
-    }
+  if (indices.length % 3 !== 0) {
+    throw new Error("tshirt.glb must contain triangle geometry.");
   }
 
-  const bodies = points.map((point) => {
-    const pinnedAtTopCorner =
-      point.row === 0 && (point.column === 0 || point.column === COLUMNS);
+  let totalEdgeLength = 0;
+  let edgeCount = 0;
+  const uniqueEdges = new Set<string>();
+  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
+    const triangle = indices.slice(triangleStart, triangleStart + 3);
+    for (const [first, second] of [
+      [triangle[0], triangle[1]],
+      [triangle[1], triangle[2]],
+      [triangle[2], triangle[0]],
+    ]) {
+      const low = Math.min(first, second);
+      const high = Math.max(first, second);
+      const edgeKey = `${low}:${high}`;
+      if (uniqueEdges.has(edgeKey)) continue;
+      uniqueEdges.add(edgeKey);
+      totalEdgeLength += Math.hypot(
+        points[first].x - points[second].x,
+        points[first].y - points[second].y,
+        points[first].z - points[second].z,
+      );
+      edgeCount += 1;
+    }
+  }
+  const collisionRadius = (totalEdgeLength / edgeCount) * 0.35;
+  const highestY = Math.max(...points.map((point) => point.y));
+  const shoulderPoints = points
+    .map((point, pointIndex) => ({ point, pointIndex }))
+    .filter(({ point }) => point.y > highestY - 0.15);
+  const pinnedPointIndices = new Set([
+    shoulderPoints.reduce((left, candidate) =>
+      candidate.point.x < left.point.x ? candidate : left,
+    ).pointIndex,
+    shoulderPoints.reduce((right, candidate) =>
+      candidate.point.x > right.point.x ? candidate : right,
+    ).pointIndex,
+  ]);
+
+  const bodies = points.map((point, pointIndex) => {
     const body = new Body({
-      mass: pinnedAtTopCorner ? 0 : PARTICLE_MASS,
+      mass: pinnedPointIndices.has(pointIndex) ? 0 : PARTICLE_MASS,
       linearDamping: LINEAR_DAMPING,
       fixedRotation: true,
       position: new Vec3(point.x, point.y, point.z),
-      shape: new Sphere(COLLISION_RADIUS),
+      shape: new Sphere(collisionRadius),
     });
 
     world.addBody(body);
     return body;
   });
 
-  const indices: number[] = [];
   const connectedPairs = new Set<string>();
   const connect = (first: number, second: number, stiffness = 1e5) => {
     const low = Math.min(first, second);
@@ -123,57 +184,14 @@ function createShirtSimulation(): ShirtSimulation {
     world.addConstraint(constraint);
   };
 
-  for (let row = 0; row < ROWS; row += 1) {
-    for (let column = 0; column < COLUMNS; column += 1) {
-      const topLeft = nodeIndex(column, row);
-      const topRight = nodeIndex(column + 1, row);
-      const bottomLeft = nodeIndex(column, row + 1);
-      const bottomRight = nodeIndex(column + 1, row + 1);
-
-      // Alternating diagonals avoid a visible directional bias in the fabric.
-      if ((column + row) % 2 === 0) {
-        indices.push(topLeft, bottomLeft, topRight);
-        indices.push(topRight, bottomLeft, bottomRight);
-        connect(topLeft, bottomRight);
-      } else {
-        indices.push(topLeft, bottomLeft, bottomRight);
-        indices.push(topLeft, bottomRight, topRight);
-        connect(topRight, bottomLeft);
-      }
-
-      connect(topLeft, topRight);
-      connect(topLeft, bottomLeft);
-      connect(topRight, bottomRight);
-      connect(bottomLeft, bottomRight);
-    }
+  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
+    const first = indices[triangleStart];
+    const second = indices[triangleStart + 1];
+    const third = indices[triangleStart + 2];
+    connect(first, second);
+    connect(second, third);
+    connect(third, first);
   }
-
-  // Longer, softer links resist collapsing while still allowing broad folds.
-  points.forEach((point, pointIndex) => {
-    if (point.column + 2 <= COLUMNS) {
-      connect(pointIndex, nodeIndex(point.column + 2, point.row), 2.5e4);
-    }
-    if (point.row + 2 <= ROWS) {
-      connect(pointIndex, nodeIndex(point.column, point.row + 2), 2.5e4);
-    }
-  });
-
-  const positions = new Float32Array(points.length * 3);
-  const uvs = new Float32Array(points.length * 2);
-  points.forEach((point, index) => {
-    positions[index * 3] = point.x;
-    positions[index * 3 + 1] = point.y;
-    positions[index * 3 + 2] = point.z;
-    uvs[index * 2] = (point.x + SHIRT_WIDTH / 2) / SHIRT_WIDTH;
-    uvs[index * 2 + 1] = (point.y + SHIRT_HEIGHT / 2) / SHIRT_HEIGHT;
-  });
-
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new BufferAttribute(positions, 3));
-  geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
 
   const cursorBody = new Body({
     collisionResponse: false,
@@ -186,7 +204,16 @@ function createShirtSimulation(): ShirtSimulation {
 }
 
 function ClothShirt() {
-  const simulation = useMemo(createShirtSimulation, []);
+  const gltf = useLoader(GLTFLoader, "/tshirt.glb", (loader) => {
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("/draco/");
+    loader.setDRACOLoader(dracoLoader);
+  });
+  const sourceGeometry = useMemo(() => prepareShirtGeometry(gltf.scene), [gltf]);
+  const simulation = useMemo(
+    () => createShirtSimulation(sourceGeometry),
+    [sourceGeometry],
+  );
   const dragConstraint = useRef<PointToPointConstraint | null>(null);
   const draggedBody = useRef<Body | null>(null);
   const activePointerId = useRef<number | null>(null);
@@ -410,7 +437,7 @@ export default function Shirt() {
   return (
     <div
       id="canvas-container"
-      aria-label="Interactive rectangular cloth. Drag the fabric to move it."
+      aria-label="Interactive 3D T-shirt cloth. Drag the fabric to move it."
       role="img"
       style={{
         width: "100%",

@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas, type ThreeEvent, useFrame, useLoader } from "@react-three/fiber";
+import {
+  Canvas,
+  type ThreeEvent,
+  useFrame,
+  useLoader,
+} from "@react-three/fiber";
 import {
   Body,
+  Box,
   DistanceConstraint,
   GSSolver,
   PointToPointConstraint,
@@ -13,6 +19,7 @@ import {
 import {
   BufferAttribute,
   BufferGeometry,
+  CatmullRomCurve3,
   DoubleSide,
   Mesh,
   Object3D,
@@ -26,7 +33,36 @@ const PARTICLE_MASS = 0.12;
 const FIXED_TIME_STEP = 1 / 60;
 const LINEAR_DAMPING = 0.48;
 const RELEASE_VELOCITY_RETENTION = 0.22;
+const HANGER_DEPTH = -0.1;
+const HANGER_COLLIDER_CENTER = new Vec3(0, 1.38, HANGER_DEPTH);
+const HANGER_COLLIDER_HALF_EXTENTS = new Vec3(1.72, 0.68, 0.18);
+const HANGER_SHOULDER_OFFSETS = [0.63, 0.86, 1.06, 1.26, 1.46, 1.63];
 
+const HANGER_LEFT_ARM: [number, number, number][] = [
+  [0, 2.04, HANGER_DEPTH],
+  [-0.55, 1.94, HANGER_DEPTH],
+  [-1.2, 1.7, HANGER_DEPTH],
+  [-1.62, 1.45, HANGER_DEPTH],
+];
+const HANGER_RIGHT_ARM: [number, number, number][] = HANGER_LEFT_ARM.map(
+  ([x, y, z]) => [-x, y, z],
+);
+const HANGER_LOWER_RAIL: [number, number, number][] = [
+  [-1.62, 1.45, HANGER_DEPTH],
+  [-1.25, 0.94, HANGER_DEPTH],
+  [0, 0.78, HANGER_DEPTH],
+  [1.25, 0.94, HANGER_DEPTH],
+  [1.62, 1.45, HANGER_DEPTH],
+];
+const HANGER_HOOK: [number, number, number][] = [
+  [0, 2.02, HANGER_DEPTH],
+  [0, 2.5, HANGER_DEPTH],
+  [-0.04, 2.73, HANGER_DEPTH],
+  [-0.24, 2.89, HANGER_DEPTH],
+  [-0.47, 2.82, HANGER_DEPTH],
+  [-0.56, 2.62, HANGER_DEPTH],
+  [-0.48, 2.45, HANGER_DEPTH],
+];
 type ClothPoint = {
   x: number;
   y: number;
@@ -47,12 +83,65 @@ type PointerCaptureTarget = EventTarget & {
   setPointerCapture(pointerId: number): void;
 };
 
+function createHangerCurve(points: [number, number, number][]) {
+  return new CatmullRomCurve3(
+    points.map(([x, y, z]) => new Vector3(x, y, z)),
+    false,
+    "centripetal",
+  );
+}
+
+function addHangerCollider(world: World) {
+  const hangerBarrier = new Body({
+    mass: 0,
+    type: Body.STATIC,
+    position: HANGER_COLLIDER_CENTER.clone(),
+    shape: new Box(HANGER_COLLIDER_HALF_EXTENTS),
+  });
+  world.addBody(hangerBarrier);
+}
+
+function findHangerSupportedPointIndices(points: ClothPoint[]) {
+  const highestY = Math.max(...points.map((point) => point.y));
+  const supportedPointIndices = new Set<number>();
+
+  // Follow the shirt's shoulder seam at several places on each hanger arm.
+  // This spreads the load across the garment instead of suspending it from
+  // two vertices, while preferring the seam nearest the hanger's depth.
+  for (const side of [-1, 1]) {
+    for (const offset of HANGER_SHOULDER_OFFSETS) {
+      const targetX = side * offset;
+      const targetY = highestY + 0.286 - offset * 0.5;
+      let closestPointIndex = 0;
+      let closestScore = Number.POSITIVE_INFINITY;
+
+      points.forEach((point, pointIndex) => {
+        const score =
+          (point.x - targetX) ** 2 +
+          (point.y - targetY) ** 2 +
+          (point.z - HANGER_DEPTH) ** 2 * 0.65;
+        if (score < closestScore) {
+          closestScore = score;
+          closestPointIndex = pointIndex;
+        }
+      });
+
+      supportedPointIndices.add(closestPointIndex);
+    }
+  }
+
+  return supportedPointIndices;
+}
+
 function prepareShirtGeometry(scene: Object3D) {
   let shirtMesh: Mesh | null = null;
   let largestMeshVertexCount = 0;
   scene.traverse((object) => {
     const mesh = object as Mesh;
-    if (!mesh.isMesh || mesh.geometry.attributes.position.count <= largestMeshVertexCount) {
+    if (
+      !mesh.isMesh ||
+      mesh.geometry.attributes.position.count <= largestMeshVertexCount
+    ) {
       return;
     }
     shirtMesh = mesh;
@@ -60,7 +149,8 @@ function prepareShirtGeometry(scene: Object3D) {
   });
 
   const selectedShirtMesh = shirtMesh as Mesh | null;
-  if (!selectedShirtMesh) throw new Error("tshirt.glb does not contain a mesh.");
+  if (!selectedShirtMesh)
+    throw new Error("tshirt.glb does not contain a mesh.");
 
   scene.traverse((object) => object.updateMatrixWorld());
   const geometry = selectedShirtMesh.geometry.clone();
@@ -80,7 +170,9 @@ function prepareShirtGeometry(scene: Object3D) {
   return geometry;
 }
 
-function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation {
+function createShirtSimulation(
+  sourceGeometry: BufferGeometry,
+): ShirtSimulation {
   const world = new World({ gravity: new Vec3(0, -12.5, 0) });
   world.allowSleep = false;
   world.broadphase = new SAPBroadphase(world);
@@ -111,7 +203,11 @@ function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation 
   let totalEdgeLength = 0;
   let edgeCount = 0;
   const uniqueEdges = new Set<string>();
-  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
+  for (
+    let triangleStart = 0;
+    triangleStart < indices.length;
+    triangleStart += 3
+  ) {
     const triangle = indices.slice(triangleStart, triangleStart + 3);
     for (const [first, second] of [
       [triangle[0], triangle[1]],
@@ -132,22 +228,11 @@ function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation 
     }
   }
   const collisionRadius = (totalEdgeLength / edgeCount) * 0.35;
-  const highestY = Math.max(...points.map((point) => point.y));
-  const shoulderPoints = points
-    .map((point, pointIndex) => ({ point, pointIndex }))
-    .filter(({ point }) => point.y > highestY - 0.15);
-  const pinnedPointIndices = new Set([
-    shoulderPoints.reduce((left, candidate) =>
-      candidate.point.x < left.point.x ? candidate : left,
-    ).pointIndex,
-    shoulderPoints.reduce((right, candidate) =>
-      candidate.point.x > right.point.x ? candidate : right,
-    ).pointIndex,
-  ]);
+  const hangerSupportedPointIndices = findHangerSupportedPointIndices(points);
 
   const bodies = points.map((point, pointIndex) => {
     const body = new Body({
-      mass: pinnedPointIndices.has(pointIndex) ? 0 : PARTICLE_MASS,
+      mass: hangerSupportedPointIndices.has(pointIndex) ? 0 : PARTICLE_MASS,
       linearDamping: LINEAR_DAMPING,
       fixedRotation: true,
       position: new Vec3(point.x, point.y, point.z),
@@ -157,6 +242,8 @@ function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation 
     world.addBody(body);
     return body;
   });
+
+  addHangerCollider(world);
 
   const connectedPairs = new Set<string>();
   const connect = (first: number, second: number, stiffness = 1e5) => {
@@ -184,7 +271,11 @@ function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation 
     world.addConstraint(constraint);
   };
 
-  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
+  for (
+    let triangleStart = 0;
+    triangleStart < indices.length;
+    triangleStart += 3
+  ) {
     const first = indices[triangleStart];
     const second = indices[triangleStart + 1];
     const third = indices[triangleStart + 2];
@@ -209,7 +300,10 @@ function ClothShirt() {
     dracoLoader.setDecoderPath("/draco/");
     loader.setDRACOLoader(dracoLoader);
   });
-  const sourceGeometry = useMemo(() => prepareShirtGeometry(gltf.scene), [gltf]);
+  const sourceGeometry = useMemo(
+    () => prepareShirtGeometry(gltf.scene),
+    [gltf],
+  );
   const simulation = useMemo(
     () => createShirtSimulation(sourceGeometry),
     [sourceGeometry],
@@ -411,6 +505,34 @@ function ClothShirt() {
   );
 }
 
+function HangerTube({
+  points,
+  radius = 0.045,
+}: {
+  points: [number, number, number][];
+  radius?: number;
+}) {
+  const curve = useMemo(() => createHangerCurve(points), [points]);
+
+  return (
+    <mesh castShadow>
+      <tubeGeometry args={[curve, 48, radius, 10, false]} />
+      <meshStandardMaterial color="#080808" roughness={0.72} metalness={0.08} />
+    </mesh>
+  );
+}
+
+function Hanger() {
+  return (
+    <group>
+      <HangerTube points={HANGER_LEFT_ARM} radius={0.065} />
+      <HangerTube points={HANGER_RIGHT_ARM} radius={0.065} />
+      <HangerTube points={HANGER_LOWER_RAIL} />
+      <HangerTube points={HANGER_HOOK} radius={0.055} />
+    </group>
+  );
+}
+
 function Scene() {
   return (
     <>
@@ -424,6 +546,7 @@ function Scene() {
         shadow-mapSize-height={1024}
       />
       <directionalLight position={[-4, 1, 3]} intensity={1} color="#fffaff" />
+      <Hanger />
       <ClothShirt />
       <mesh position={[0, 0, -1]} receiveShadow>
         <planeGeometry args={[7, 7]} />
@@ -437,7 +560,7 @@ export default function Shirt() {
   return (
     <div
       id="canvas-container"
-      aria-label="Interactive 3D T-shirt cloth. Drag the fabric to move it."
+      aria-label="Interactive 3D T-shirt hanging on a black hanger. Drag the fabric to move it."
       role="img"
       style={{
         width: "100%",
@@ -447,7 +570,7 @@ export default function Shirt() {
       }}
     >
       <Canvas
-        camera={{ position: [3.7, 0.25, 8.6], fov: 34, near: 0.1, far: 50 }}
+        camera={{ position: [3.7, 0.45, 8.6], fov: 37, near: 0.1, far: 50 }}
         dpr={[1, 1.75]}
         shadows
         gl={{ antialias: true, powerPreference: "high-performance" }}

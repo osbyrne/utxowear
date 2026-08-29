@@ -20,10 +20,15 @@ import {
   BufferAttribute,
   BufferGeometry,
   CatmullRomCurve3,
+  ClampToEdgeWrapping,
   DoubleSide,
   Mesh,
+  MeshPhysicalMaterial,
   Object3D,
   Plane,
+  SRGBColorSpace,
+  Texture,
+  TextureLoader,
   Vector3,
 } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
@@ -37,6 +42,10 @@ const HANGER_DEPTH = -0.1;
 const HANGER_COLLIDER_CENTER = new Vec3(0, 1.38, HANGER_DEPTH);
 const HANGER_COLLIDER_HALF_EXTENTS = new Vec3(1.72, 0.68, 0.18);
 const HANGER_SHOULDER_OFFSETS = [0.63, 0.86, 1.06, 1.26, 1.46, 1.63];
+const PRINT_CENTER_X = 0;
+const PRINT_CENTER_Y = 0.45;
+const PRINT_WIDTH = 1.45;
+const PRINT_HEIGHT = 1.45;
 
 const HANGER_LEFT_ARM: [number, number, number][] = [
   [0, 2.04, HANGER_DEPTH],
@@ -166,8 +175,73 @@ function prepareShirtGeometry(scene: Object3D) {
   geometry.translate(-center.x, -center.y, -center.z);
   geometry.scale(scale, scale, scale);
   geometry.computeVertexNormals();
+
+  // The source model has no UVs. Project the artwork from the front using the
+  // shirt's undeformed X/Y coordinates and remember which vertices originally
+  // belonged to the front surface. Both attributes remain fixed while the
+  // simulation updates only vertex positions.
+  const position = geometry.getAttribute("position") as BufferAttribute;
+  const normal = geometry.getAttribute("normal") as BufferAttribute;
+  const printUvs = new Float32Array(position.count * 2);
+  const printMasks = new Float32Array(position.count);
+
+  for (let index = 0; index < position.count; index += 1) {
+    printUvs[index * 2] =
+      (position.getX(index) - PRINT_CENTER_X) / PRINT_WIDTH + 0.5;
+    printUvs[index * 2 + 1] =
+      (position.getY(index) - PRINT_CENTER_Y) / PRINT_HEIGHT + 0.5;
+    printMasks[index] = normal.getZ(index) > 0.5 ? 1 : 0;
+  }
+
+  geometry.setAttribute("printUv", new BufferAttribute(printUvs, 2));
+  geometry.setAttribute("printMask", new BufferAttribute(printMasks, 1));
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+function createPrintedShirtMaterial(printTexture: Texture) {
+  const material = new MeshPhysicalMaterial({
+    color: "#f6f3ed",
+    roughness: 0.88,
+    metalness: 0,
+    sheen: 0.72,
+    sheenColor: "#d8cec0",
+    sheenRoughness: 0.82,
+    side: DoubleSide,
+  });
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.printMap = { value: printTexture };
+    shader.vertexShader = `
+      attribute vec2 printUv;
+      attribute float printMask;
+      varying vec2 vPrintUv;
+      varying float vPrintMask;
+    ${shader.vertexShader}`.replace(
+      "#include <uv_vertex>",
+      `#include <uv_vertex>
+       vPrintUv = printUv;
+       vPrintMask = printMask;`,
+    );
+    shader.fragmentShader = `
+      uniform sampler2D printMap;
+      varying vec2 vPrintUv;
+      varying float vPrintMask;
+    ${shader.fragmentShader}`.replace(
+      "#include <map_fragment>",
+      `#include <map_fragment>
+       float printInBounds =
+         step(0.0, vPrintUv.x) * step(vPrintUv.x, 1.0) *
+         step(0.0, vPrintUv.y) * step(vPrintUv.y, 1.0);
+       vec4 printSample = texture2D(printMap, vPrintUv);
+       float printOpacity = printSample.a * printInBounds *
+         smoothstep(0.45, 0.75, vPrintMask);
+       diffuseColor.rgb = mix(diffuseColor.rgb, printSample.rgb, printOpacity);`,
+    );
+  };
+  material.customProgramCacheKey = () => "front-shirt-print-v1";
+
+  return material;
 }
 
 function createShirtSimulation(
@@ -300,6 +374,19 @@ function ClothShirt() {
     dracoLoader.setDecoderPath("/draco/");
     loader.setDRACOLoader(dracoLoader);
   });
+  const loadedPrintTexture = useLoader(TextureLoader, "/sol.webp");
+  const printTexture = useMemo(() => {
+    const texture = loadedPrintTexture.clone();
+    texture.colorSpace = SRGBColorSpace;
+    texture.wrapS = ClampToEdgeWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
+    texture.needsUpdate = true;
+    return texture;
+  }, [loadedPrintTexture]);
+  const material = useMemo(
+    () => createPrintedShirtMaterial(printTexture),
+    [printTexture],
+  );
   const sourceGeometry = useMemo(
     () => prepareShirtGeometry(gltf.scene),
     [gltf],
@@ -363,8 +450,10 @@ function ClothShirt() {
       window.removeEventListener("blur", handleWindowBlur);
       finishDrag();
       simulation.geometry.dispose();
+      material.dispose();
+      printTexture.dispose();
     };
-  }, [finishDrag, simulation]);
+  }, [finishDrag, material, printTexture, simulation]);
 
   const finishPointerDrag = (event: ThreeEvent<PointerEvent>) => {
     finishDrag(event.pointerId);
@@ -485,23 +574,14 @@ function ClothShirt() {
   return (
     <mesh
       geometry={simulation.geometry}
+      material={material}
       castShadow
       frustumCulled={false}
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
       onPointerUp={finishPointerDrag}
       onPointerCancel={finishPointerDrag}
-    >
-      <meshPhysicalMaterial
-        color="#f6f3ed"
-        roughness={0.88}
-        metalness={0}
-        sheen={0.72}
-        sheenColor="#d8cec0"
-        sheenRoughness={0.82}
-        side={DoubleSide}
-      />
-    </mesh>
+    />
   );
 }
 

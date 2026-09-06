@@ -1,4 +1,6 @@
 ---
+import * as stylex from '@stylexjs/stylex';
+import { styles, productMarker } from '../styles/storefront.stylex';
 import type { StoreProduct } from '../lib/printify';
 
 type Props = {
@@ -12,27 +14,27 @@ const price = new Intl.NumberFormat('en-US', {
 }).format(product.price / 100);
 ---
 
-<article class="group min-w-0 overflow-hidden rounded-2xl bg-base-100 ring-1 ring-base-300 transition-shadow hover:shadow-lg">
+<article {...stylex.attrs(styles.card, productMarker)}>
   <a href={product.href} target="_blank" rel="noopener noreferrer" aria-label={`View ${product.title} on Printify`}>
-    <figure class="aspect-4/3 overflow-hidden bg-base-200/60">
+    <figure {...stylex.attrs(styles.figure)}>
       <img
         src={product.mockups[0]}
         alt={`${product.title} product mockup`}
         loading="lazy"
-        class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        {...stylex.attrs(styles.image)}
       />
     </figure>
   </a>
-  <div class="p-3 sm:p-4">
-    <div class="flex items-start justify-between gap-2">
-      <h3 class="min-w-0 truncate text-sm font-bold sm:text-base">
-        <a href={product.href} target="_blank" rel="noopener noreferrer" class="hover:underline">
+  <div {...stylex.attrs(styles.productBody)}>
+    <div {...stylex.attrs(styles.productHeading)}>
+      <h3 {...stylex.attrs(styles.productTitle)}>
+        <a href={product.href} target="_blank" rel="noopener noreferrer" {...stylex.attrs(styles.productLink)}>
           {product.title}
         </a>
       </h3>
-      <span class="shrink-0 text-xs font-semibold sm:text-sm">{price}</span>
+      <span {...stylex.attrs(styles.price)}>{price}</span>
     </div>
-    <p class="mt-1 hidden truncate text-sm leading-5 text-base-content/60 sm:block">
+    <p {...stylex.attrs(styles.description)}>
       {product.description || 'Printify-made / unisex fit'}
     </p>
   </div>

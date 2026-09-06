@@ -1,4 +1,6 @@
 ---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import Shirt from '../components/Shirt.tsx';
@@ -9,27 +11,35 @@ import '../app.css';
 const products = await getPrintifyProducts();
 ---
 
-<html lang="en" data-theme="corporate">
+<html lang="en">
   <head>
+    <!-- Establish reset precedence before development StyleX CSS loads. -->
+    <style is:inline>@layer reset;</style>
     <meta charset="utf-8" />
     <link rel="icon" href="/icon.webp" />
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
     <title>utxowear</title>
+    {import.meta.env.DEV && <link rel="stylesheet" href="/virtual:stylex.css" />}
+    <script>
+      if (import.meta.env.DEV) {
+        import('virtual:stylex:css-only');
+      }
+    </script>
   </head>
-  <body class="min-h-screen bg-base-200 text-base-content">
-    <div class="mx-auto min-h-screen w-full max-w-[1600px] bg-base-100 shadow-2xl xl:my-6 xl:min-h-[calc(100vh-3rem)] xl:overflow-hidden xl:rounded-3xl xl:ring-1 xl:ring-base-300/60">
+  <body {...stylex.attrs(styles.body)}>
+    <div {...stylex.attrs(styles.shell)}>
       <Header />
 
-      <main class="grid gap-8 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] lg:gap-10 lg:px-10 lg:py-10 xl:gap-14 xl:px-14">
+      <main {...stylex.attrs(styles.main)}>
 
-        <section class="min-w-0" aria-label="React product preview">
+        <section {...stylex.attrs(styles.preview)} aria-label="React product preview">
           <Shirt client:load />
         </section>
 
-        <section id="shop" class="min-w-0 lg:pt-1" aria-label="Shop">
-          <div class="mb-5 flex justify-end border-b border-base-300 pb-4">
-            <span class="shrink-0 text-sm text-base-content/60">
+        <section id="shop" {...stylex.attrs(styles.shop)} aria-label="Shop">
+          <div {...stylex.attrs(styles.countRow)}>
+            <span {...stylex.attrs(styles.count)}>
               {products.length} {products.length === 1 ? 'piece' : 'pieces'}
             </span>
           </div>

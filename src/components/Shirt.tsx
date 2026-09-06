@@ -1,3 +1,4 @@
+import * as stylex from "@stylexjs/stylex";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Canvas,
@@ -642,22 +643,27 @@ export default function Shirt() {
       id="canvas-container"
       aria-label="Interactive 3D T-shirt hanging on a black hanger. Drag the fabric to move it."
       role="img"
-      style={{
-        width: "100%",
-        height: "clamp(28rem, 68vh, 46rem)",
-        overflow: "hidden",
-        borderRadius: "1.5rem",
-      }}
+      {...stylex.props(styles.container)}
     >
       <Canvas
         camera={{ position: [3.7, 0.45, 8.6], fov: 37, near: 0.1, far: 50 }}
         dpr={[1, 1.75]}
         shadows
         gl={{ antialias: true, powerPreference: "high-performance" }}
-        style={{ cursor: "grab", touchAction: "grab" }}
+        {...stylex.props(styles.canvas)}
       >
         <Scene />
       </Canvas>
     </div>
   );
 }
+
+const styles = stylex.create({
+  container: {
+    width: "100%",
+    height: "clamp(28rem, 68vh, 46rem)",
+    overflow: "hidden",
+    borderRadius: "1.5rem",
+  },
+  canvas: { cursor: "grab", touchAction: "none" },
+});

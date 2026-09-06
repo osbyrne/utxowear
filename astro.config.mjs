@@ -1,12 +1,18 @@
 // @ts-check
 import { defineConfig } from "astro/config";
-import tailwindcss from "@tailwindcss/vite";
-import react from '@astrojs/react';
+import react from "@astrojs/react";
+import stylex from "@stylexjs/unplugin";
 
-// https://astro.build/config
 export default defineConfig({
   integrations: [react()],
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [
+      stylex.vite({
+        useCSSLayers: true,
+        devMode: "css-only",
+        runtimeInjection: false,
+        unstable_moduleResolution: { type: "commonJS" },
+      }),
+    ],
   },
 });

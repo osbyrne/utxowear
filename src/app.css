@@ -1,22 +1,56 @@
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap");
-@import "tailwindcss";
-@plugin "daisyui";
 
-.font-instrument-serif {
-  font-family: "Instrument Serif", Georgia, serif;
-}
+/* Document defaults and reset; component styles live in StyleX modules. */
+@layer reset {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
 
-html {
-  scroll-behavior: smooth;
-}
+  html {
+    font-family:
+      ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+    color-scheme: light;
+  }
 
-body {
-  margin: 0;
-  overflow-x: hidden;
-}
-
-button,
-a,
-summary {
-  -webkit-tap-highlight-color: transparent;
+  body {
+    overflow-x: hidden;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+  }
+  img,
+  svg,
+  canvas {
+    display: block;
+    vertical-align: middle;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
 }

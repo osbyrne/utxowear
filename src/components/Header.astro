@@ -1,21 +1,26 @@
-<header class="overflow-hidden border-b border-base-300 bg-base-100">
-  <div class="navbar min-h-16 gap-2 px-4 sm:px-6">
-    <div class="navbar-start w-auto flex-1">
-      <a href="/" class="font-instrument-serif text-3xl leading-none tracking-tight text-base-content" aria-label="UTXOWEAR home">
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+---
+
+<header {...stylex.attrs(styles.header)}>
+  <div {...stylex.attrs(styles.navbar)}>
+    <div {...stylex.attrs(styles.brandArea)}>
+      <a href="/" {...stylex.attrs(styles.brand)} aria-label="UTXOWEAR home">
         UTXOWEAR
       </a>
     </div>
 
-    <div class="navbar-end w-auto gap-1">
-      <button type="button" class="btn btn-ghost btn-sm hidden sm:inline-flex" aria-label="Search">
+    <div {...stylex.attrs(styles.actions)}>
+      <button type="button" {...stylex.attrs(styles.button, styles.search)} aria-label="Search">
         Search
       </button>
-      <button type="button" class="btn btn-ghost btn-sm hidden md:inline-flex" aria-label="Account">
+      <button type="button" {...stylex.attrs(styles.button, styles.account)} aria-label="Account">
         Account
       </button>
-      <button type="button" class="btn btn-outline btn-sm" aria-label="Shopping bag with 0 items">
+      <button type="button" {...stylex.attrs(styles.button, styles.bag)} aria-label="Shopping bag with 0 items">
         Bag
-        <span class="badge badge-neutral badge-sm">0</span>
+        <span {...stylex.attrs(styles.badge)}>0</span>
       </button>
     </div>
   </div>

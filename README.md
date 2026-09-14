@@ -11,14 +11,48 @@ add a Personal Access Token created under **Printify → My Profile → Connecti
 multiple shops; otherwise the integration matches the `utxowear` shop by name.
 The token is only read in Astro server/build code and is never sent to browsers.
 
+The build-time integration uses the exact stable `effect@3.22.2` release. The
+Effect pipeline is kept out of browser code and is split into these boundaries:
+
+- `src/lib/printify.ts` translates Astro environment variables and is the only
+  Promise execution boundary.
+- `src/lib/printify/model.ts` owns Effect Schema contracts, configuration, and
+  tagged failures.
+- `src/lib/printify/parsing.ts` owns Flight extraction and pure normalization.
+- `src/lib/printify/client.ts` provides the injectable, cancellable GET client.
+- `src/lib/printify/catalog.ts` orchestrates pagination, source precedence, and
+  fallback behavior.
+
+The public storefront is attempted first. With a nonblank token, the API then
+loads the selected shop and all product pages sequentially; a complete API
+result with usable products takes precedence. An API status, transport,
+timeout, JSON/schema, shop-selection, or pagination failure discards all API
+pages and falls back to usable public products. If neither remote source has a
+usable catalog, the original local names use `/shirt_transparent.png`, USD,
+and a price of 6400 minor units.
+
+Each request attempt has a 10-second timeout and uses the storefront user agent.
+Transport failures, timeouts, 408, 429, and 5xx statuses receive at most two
+retries with jittered exponential delays starting at 250 ms. Valid
+`Retry-After` headers are honored. Each complete public or API source operation
+has a 60-second budget, and API pagination is sequential and capped at 100
+pages; exceeding that cap fails the API source instead of publishing partial
+pages. Diagnostics contain only source, error tag, status, and page metadata.
+
+`PRINTIFY_STORE_URL` defaults to `https://utxowear.printify.me/` and
+`PRINTIFY_CURRENCY` defaults to `USD`; invalid optional overrides are warned
+about and replaced with those safe defaults. `PRINTIFY_API_TOKEN` and
+`PRINTIFY_SHOP_ID` are optional.
+
 ## Commands
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
+| Command               | Action                                           |
+| :-------------------- | :----------------------------------------------- |
+| `bun install`         | Installs dependencies                            |
 | `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
+| `bun run build`       | Build your production site to `./dist/`          |
 | `bun preview`         | Preview your build locally, before deploying     |
+| `bun test`            | Run deterministic Printify integration tests     |
 | `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
 | `bun astro -- --help` | Get help using the Astro CLI                     |
 

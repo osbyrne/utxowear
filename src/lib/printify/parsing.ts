@@ -128,27 +128,6 @@ export function plainText(value = ""): string {
     .trim();
 }
 
-function resolveUrl(path: string | undefined, baseUrl: string): string {
-  if (!path) return baseUrl;
-
-  try {
-    return new URL(path, baseUrl).toString();
-  } catch {
-    return baseUrl;
-  }
-}
-
-export function publicProductHref(
-  product: Pick<PublicStoreProduct, "path">,
-  config: PrintifyConfig,
-): string {
-  return resolveUrl(product.path, config.storeUrl);
-}
-
-export function productHref(handle: string | undefined, config: PrintifyConfig): string {
-  return resolveUrl(handle, config.storeUrl);
-}
-
 export function normalizePublicProduct(
   product: PublicStoreProduct,
   config: PrintifyConfig,
@@ -161,7 +140,8 @@ export function normalizePublicProduct(
     description: plainText(product.description),
     price: product.defaultVariant?.retailPrice ?? 0,
     currency: config.currency,
-    href: publicProductHref(product, config),
+    variants: [],
+    defaultVariantId: null,
     mockups: [product.image],
   };
 }
@@ -174,54 +154,51 @@ function imageOrder(image: PrintifyProduct["images"][number]): number {
 
 export function normalizeApiProduct(
   product: PrintifyProduct,
-  publicProducts: ReadonlyMap<string, PublicStoreProduct>,
   config: PrintifyConfig,
 ): StoreProduct | undefined {
-  const publicProduct = publicProducts.get(product.id);
-  const enabledVariants = product.variants.filter((variant) => variant.is_enabled);
-  const defaultVariant = enabledVariants.find((variant) => variant.is_default);
-  const price =
-    defaultVariant?.price ??
-    (enabledVariants.length > 0
-      ? Math.min(...enabledVariants.map((variant) => variant.price))
-      : Number.POSITIVE_INFINITY);
+  const enabledVariants = product.variants.filter(
+    (variant) => variant.is_enabled && variant.is_available !== false && variant.price > 0,
+  );
+  const selected = enabledVariants.find((variant) => variant.is_default) ?? enabledVariants[0];
   const images = [...product.images].sort((left, right) => imageOrder(left) - imageOrder(right));
 
-  if (!images.length || !Number.isFinite(price)) return undefined;
+  if (!images.length || !selected) return undefined;
+
+  const optionValues = new Map<number, { name: string; value: string }>();
+  for (const option of product.options ?? []) {
+    for (const value of option.values) {
+      optionValues.set(value.id, { name: option.name, value: value.title });
+    }
+  }
 
   return {
     id: product.id,
     title: product.title,
     description: plainText(product.description),
-    price,
+    price: selected.price,
     currency: config.currency,
-    href: publicProduct
-      ? publicProductHref(publicProduct, config)
-      : productHref(product.external?.handle, config),
     mockups: images.map((image) => image.src),
+    variants: enabledVariants.map((variant) => ({
+      id: variant.id,
+      title: variant.title,
+      price: variant.price,
+      options: variant.options.flatMap((id) => {
+        const option = optionValues.get(id);
+        return option ? [option] : [];
+      }),
+      image: images.find((image) => image.variant_ids?.includes(variant.id))?.src ?? images[0].src,
+    })),
+    defaultVariantId: selected.id,
   };
-}
-
-export function createPublicProductIndex(
-  products: readonly PublicStoreProduct[],
-): ReadonlyMap<string, PublicStoreProduct> {
-  return new Map(
-    products.flatMap((product) =>
-      product.externalId ? [[product.externalId, product] as const] : [],
-    ),
-  );
 }
 
 export function normalizeApiProducts(
   products: readonly PrintifyProduct[],
-  publicProducts: readonly PublicStoreProduct[],
   config: PrintifyConfig,
 ): StoreProduct[] {
-  const publicProductIndex = createPublicProductIndex(publicProducts);
-
   return products
     .filter((product) => product.visible)
-    .map((product) => normalizeApiProduct(product, publicProductIndex, config))
+    .map((product) => normalizeApiProduct(product, config))
     .filter((product): product is StoreProduct => Boolean(product));
 }
 

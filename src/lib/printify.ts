@@ -28,21 +28,25 @@ export function configFromEnvironment(environment: PrintifyEnvironment): ConfigR
   return normalizePrintifyConfig(input);
 }
 
-function currentEnvironment(): PrintifyEnvironment {
-  return {
-    PRINTIFY_API_TOKEN: import.meta.env.PRINTIFY_API_TOKEN,
-    PRINTIFY_SHOP_ID: import.meta.env.PRINTIFY_SHOP_ID,
-    PRINTIFY_STORE_URL: import.meta.env.PRINTIFY_STORE_URL,
-    PRINTIFY_CURRENCY: import.meta.env.PRINTIFY_CURRENCY,
-  };
-}
+// Worker isolates reuse modules across requests. Coalesce catalog loads and avoid
+// calling Printify on every page view (including its rate-limited catalog API).
+let catalogCache: { products: StoreProduct[]; expiresAt: number } | undefined;
+let catalogLoad: Promise<StoreProduct[]> | undefined;
+const CATALOG_TTL_MS = 5 * 60_000;
 
-export async function getPrintifyProducts(): Promise<StoreProduct[]> {
-  const { config, warnings } = configFromEnvironment(currentEnvironment());
-  for (const warning of warnings) {
-    console.warn(`[Printify] ${warning.message}`);
-  }
+export function getPrintifyProducts(environment: PrintifyEnvironment): Promise<StoreProduct[]> {
+  if (catalogCache && Date.now() < catalogCache.expiresAt)
+    return Promise.resolve(catalogCache.products);
+  if (catalogLoad) return catalogLoad;
 
-  const catalog = makeCatalog(config);
-  return Effect.runPromise(Effect.provide(catalog, FetchLive));
+  catalogLoad = (async () => {
+    const { config, warnings } = configFromEnvironment(environment);
+    for (const warning of warnings) console.warn(`[Printify] ${warning.message}`);
+    const products = await Effect.runPromise(Effect.provide(makeCatalog(config), FetchLive));
+    catalogCache = { products, expiresAt: Date.now() + CATALOG_TTL_MS };
+    return products;
+  })().finally(() => {
+    catalogLoad = undefined;
+  });
+  return catalogLoad;
 }

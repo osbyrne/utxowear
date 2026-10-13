@@ -23,13 +23,22 @@ const apiProduct = {
   title: "API shirt",
   description: "<p>API</p>",
   visible: true,
+  options: [
+    {
+      name: "Size",
+      values: [
+        { id: 10, title: "S" },
+        { id: 11, title: "M" },
+      ],
+    },
+  ],
   images: [
-    { src: "default.png", position: "back", is_default: true },
-    { src: "front.png", position: "front", is_default: false },
+    { src: "default.png", position: "back", is_default: true, variant_ids: [102] },
+    { src: "front.png", position: "front", is_default: false, variant_ids: [101] },
   ],
   variants: [
-    { price: 7200, is_enabled: true, is_default: false },
-    { price: 6800, is_enabled: true, is_default: true },
+    { id: 101, title: "S", options: [10], price: 7200, is_enabled: true, is_default: false },
+    { id: 102, title: "M", options: [11], price: 6800, is_enabled: true, is_default: true },
   ],
 };
 
@@ -94,8 +103,9 @@ describe("catalog source precedence and fallbacks", () => {
         description: "Public",
         price: 6400,
         currency: "EUR",
-        href: "https://utxowear.printify.me/products/public-shirt",
         mockups: ["https://cdn.example/public.png"],
+        variants: [],
+        defaultVariantId: null,
       },
     ]);
     expect(calls).toEqual(["https://utxowear.printify.me/"]);
@@ -169,33 +179,6 @@ describe("catalog source precedence and fallbacks", () => {
     }
   });
 
-  test("uses API handles when public loading fails", async () => {
-    const calls: string[] = [];
-    const fetchImplementation: FetchImplementation = async (input) => {
-      calls.push(input);
-      if (input === config().storeUrl) return response("unavailable", 404);
-      if (input.endsWith("/shops.json")) return response(apiShop());
-      return response(
-        apiPage([
-          {
-            ...apiProduct,
-            id: "api-with-handle",
-            external: { handle: "/products/from-api" },
-          },
-        ]),
-      );
-    };
-
-    const products = await runCatalog(fetchImplementation);
-    expect(products).toMatchObject([
-      {
-        id: "api-with-handle",
-        href: "https://utxowear.printify.me/products/from-api",
-      },
-    ]);
-    expect(calls).toHaveLength(3);
-  });
-
   test("uses the original local catalog when both remote sources fail", async () => {
     const fetchImplementation: FetchImplementation = async (input) =>
       input === config().storeUrl ? response("public failed", 404) : response("api failed", 401);
@@ -210,8 +193,9 @@ describe("catalog source precedence and fallbacks", () => {
         description: "Heavyweight cotton / unisex fit",
         price: 6400,
         currency: "USD",
-        href: "https://utxowear.printify.me/",
         mockups: ["/shirt_transparent.png"],
+        variants: [],
+        defaultVariantId: null,
       },
       {
         id: "fallback-1",
@@ -219,8 +203,9 @@ describe("catalog source precedence and fallbacks", () => {
         description: "Heavyweight cotton / unisex fit",
         price: 6400,
         currency: "USD",
-        href: "https://utxowear.printify.me/",
         mockups: ["/shirt_transparent.png"],
+        variants: [],
+        defaultVariantId: null,
       },
     ]);
   });

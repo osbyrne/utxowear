@@ -1,60 +1,87 @@
 # utxowear web site repository
 
-## Printify products and mockups
+## On-site checkout
 
-The product grid reads published products and front mockups from
-`https://utxowear.printify.me/` during the Astro build. To retrieve the full
-mockup list through Printify's official API, copy `.env.example` to `.env` and
-add a Personal Access Token created under **Printify → My Profile → Connections**.
+The storefront displays Printify products and enabled size/color variants. The
+cart collects a delivery address, asks Printify for destination-specific shipping
+rates, and starts a Stripe-hosted payment. A Stripe-signed webhook creates the
+Printify order **only after payment succeeds**. The Printify token and Stripe
+secret keys are never sent to browsers. Public-store or local fallback products
+have no trustworthy variant IDs and cannot be purchased through this checkout.
 
-`PRINTIFY_SHOP_ID` is optional. It is useful when the same Printify account owns
-multiple shops; otherwise the integration matches the `utxowear` shop by name.
-The token is only read in Astro server/build code and is never sent to browsers.
+This application runs as an Astro server on **Cloudflare Workers**, with a D1
+database used to prevent duplicate fulfillment on Stripe webhook retries. It
+cannot be deployed as a static-only site. The Printify API must grant access to
+the shop that owns the listed products; use a shop supporting API order creation.
+The checkout accepts USD prices and shipping quotes; use
+`PRINTIFY_CURRENCY=USD`. Shipping options are calculated by Printify for the
+chosen products and address. Checkout charges the merchandise price and the
+selected shipping charge; tax is calculated in Stripe Checkout when Stripe Tax
+is configured for the merchant's registered jurisdictions. Configure your
+Stripe Tax registrations, product tax defaults, and reporting obligations
+before accepting live payments.
 
-The build-time integration uses the exact stable `effect@3.22.2` release. The
-Effect pipeline is kept out of browser code and is split into these boundaries:
+### Local setup
 
-- `src/lib/printify.ts` translates Astro environment variables and is the only
-  Promise execution boundary.
-- `src/lib/printify/model.ts` owns Effect Schema contracts, configuration, and
-  tagged failures.
-- `src/lib/printify/parsing.ts` owns Flight extraction and pure normalization.
-- `src/lib/printify/client.ts` provides the injectable, cancellable GET client.
-- `src/lib/printify/catalog.ts` orchestrates pagination, source precedence, and
-  fallback behavior.
+1. Run `bun install`. Copy `.dev.vars.example` to `.dev.vars` and supply
+   `PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and
+   `CHECKOUT_ORIGIN=http://localhost:4321`. Set `PRINTIFY_SHOP_ID` to the
+   Printify shop whose products are listed (especially if you have multiple
+   shops). Never commit `.dev.vars`.
+2. Run `bun run migrate:local`, then `bun dev`. Wrangler provides local D1
+   and Worker secrets from `.dev.vars`. Only products returned by the
+   authenticated Printify API can be purchased.
+3. In a separate terminal, forward Stripe test webhooks for
+   `checkout.session.completed` to `http://localhost:4321/api/stripe-webhook`.
+   Use the signing secret printed by the Stripe CLI as
+   `STRIPE_WEBHOOK_SECRET` in `.dev.vars`; restart `bun dev`.
+4. Test a complete payment with Stripe test credentials and a valid Printify
+   test shop before accepting real money. Printify has no sandbox order API:
+   a successful paid test checkout can create an actual fulfillment order.
+   Set Printify order approval to **Manual** while testing and reconcile orders
+   in the Printify dashboard before release.
 
-The public storefront is attempted first. With a nonblank token, the API then
-loads the selected shop and all product pages sequentially; a complete API
-result with usable products takes precedence. An API status, transport,
-timeout, JSON/schema, shop-selection, or pagination failure discards all API
-pages and falls back to usable public products. If neither remote source has a
-usable catalog, the original local names use `/shirt_transparent.png`, USD,
-and a price of 6400 minor units.
+### Deployment
 
-Each request attempt has a 10-second timeout and uses the storefront user agent.
-Transport failures, timeouts, 408, 429, and 5xx statuses receive at most two
-retries with jittered exponential delays starting at 250 ms. Valid
-`Retry-After` headers are honored. Each complete public or API source operation
-has a 60-second budget, and API pagination is sequential and capped at 100
-pages; exceeding that cap fails the API source instead of publishing partial
-pages. Diagnostics contain only source, error tag, status, and page metadata.
+Run `bun run build` and `bunx wrangler deploy` from an authenticated Cloudflare
+account. Wrangler provisions the D1 binding `CHECKOUT_DB` on first deployment;
+record the generated database ID in `wrangler.jsonc` and apply
+`bun run migrate:remote` before taking payments. Set secrets with
+`bunx wrangler secret put PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, and `CHECKOUT_ORIGIN`, and set
+`PRINTIFY_SHOP_ID` and `PRINTIFY_CURRENCY=USD` for this Worker. Register
+`https://YOUR-DOMAIN/api/stripe-webhook` in Stripe with the
+`checkout.session.completed` event; its signing secret must match the deployed
+`STRIPE_WEBHOOK_SECRET`. Configure `CHECKOUT_ORIGIN` as the exact public HTTPS
+origin. Apply future migrations before deploying code that depends on them.
 
-`PRINTIFY_STORE_URL` defaults to `https://utxowear.printify.me/` and
-`PRINTIFY_CURRENCY` defaults to `USD`; invalid optional overrides are warned
-about and replaced with those safe defaults. `PRINTIFY_API_TOKEN` and
-`PRINTIFY_SHOP_ID` are optional.
+Failed or uncertain fulfillment attempts require manual reconciliation against
+the Stripe Session ID (Printify external order ID). Do not retry an ambiguous
+submission blindly; it could create two orders. Successful checkout redirect is
+not a fulfillment confirmation: the webhook is authoritative.
+
+Printify Express can split one cart into express and ordinary fulfillment orders;
+its production scheduling is controlled by Printify. Confirm shop approval and
+express behavior in Printify before enabling live Express checkout.
+
+The catalog requests Printify's public storefront first, then, with a token,
+pages through the authenticated product API. API data supplies all mockups,
+enabled variants, and prices. If the API is unavailable, the grid still displays
+public products, but purchase controls remain unavailable. Each Worker isolate
+caches a complete catalog for five minutes and coalesces concurrent page loads.
+The server/client catalog implementation is in `src/lib/printify/`.
 
 ## Commands
 
-| Command               | Action                                           |
-| :-------------------- | :----------------------------------------------- |
-| `bun install`         | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun run build`       | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun test`            | Run deterministic Printify integration tests     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
+| Command                  | Action                                                          |
+| :----------------------- | :-------------------------------------------------------------- |
+| `bun dev`                | Generate Worker types and start the Astro/Cloudflare dev server |
+| `bun run migrate:local`  | Apply checkout ledger migration to local D1                     |
+| `bun run migrate:remote` | Apply checkout ledger migration to production D1                |
+| `bun check`              | Type-check Astro and TypeScript                                 |
+| `bun test`               | Run deterministic integration tests                             |
+| `bun run build`          | Build the Worker into `dist/`                                   |
+| `bun run deploy`         | Build and deploy the Worker                                     |
 
 ## Styling
 
@@ -65,8 +92,8 @@ Astro's production stylesheet. The development-only stylesheet and HMR import in
 
 - `src/styles/theme.stylex.ts` defines shared colors and typography.
 - `src/styles/storefront.stylex.ts` defines the Astro storefront styles. Apply
-  them with `stylex.attrs(...)`; keep compiler-only calls such as `stylex.create`
-  and `stylex.defaultMarker` in TypeScript modules, outside Astro templates.
+  them with `stylex.attrs(...)`; keep compiler-only `stylex.create` in
+  TypeScript modules, outside Astro templates.
 - React components use `stylex.props(...)`, with the 3D preview styles colocated
   in `src/components/Shirt.tsx`.
 - `src/app.css` contains only the font import and a global reset, in a lower

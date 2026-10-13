@@ -12,16 +12,13 @@ import { styles } from '../styles/storefront.stylex';
     </div>
 
     <div {...stylex.attrs(styles.actions)}>
-      <button type="button" {...stylex.attrs(styles.button, styles.search)} aria-label="Search">
-        Search
-      </button>
-      <button type="button" {...stylex.attrs(styles.button, styles.account)} aria-label="Account">
-        Account
-      </button>
-      <button type="button" {...stylex.attrs(styles.button, styles.bag)} aria-label="Shopping bag with 0 items">
+      <a href="#shop" {...stylex.attrs(styles.button, styles.search)} aria-label="Browse products">
+        Shop
+      </a>
+      <a href="#cart" data-cart-link {...stylex.attrs(styles.button, styles.bag)} aria-label="View shopping cart">
         Bag
-        <span {...stylex.attrs(styles.badge)}>0</span>
-      </button>
+        <span data-cart-count {...stylex.attrs(styles.badge)}>0</span>
+      </a>
     </div>
   </div>
 </header>

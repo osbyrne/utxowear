@@ -1,7 +1,5 @@
 ---
-import * as stylex from '@stylexjs/stylex';
-import { styles } from '../styles/storefront.stylex';
-import Product from './Product.astro';
+import Checkout from './Checkout';
 import type { StoreProduct } from '../lib/printify';
 
 type Props = {
@@ -11,6 +9,4 @@ type Props = {
 const { products } = Astro.props;
 ---
 
-<div {...stylex.attrs(styles.productGrid)}>
-  {products.map((product) => <Product product={product} />)}
-</div>
+<Checkout products={products} client:load />

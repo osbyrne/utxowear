@@ -1,0 +1,617 @@
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import * as stylex from "@stylexjs/stylex";
+import type { StoreProduct, StoreVariant } from "../lib/printify/model";
+import { styles } from "../styles/storefront.stylex";
+
+type CartLine = { productId: string; variantId: number; quantity: number };
+type Address = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  country: string;
+  region: string;
+  address1: string;
+  address2: string;
+  city: string;
+  zip: string;
+};
+type ShippingOption = { method: number; label: string; price: number };
+type ShippingQuote = { options: ShippingOption[]; currency: string; subtotal: number };
+
+const emptyAddress: Address = {
+  first_name: "",
+  last_name: "",
+  email: "",
+  phone: "",
+  country: "US",
+  region: "",
+  address1: "",
+  address2: "",
+  city: "",
+  zip: "",
+};
+const formatters = new Map<string, Intl.NumberFormat>();
+function money(cents: number, currency = "USD") {
+  let formatter = formatters.get(currency);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
+    formatters.set(currency, formatter);
+  }
+  return formatter.format(cents / 100);
+}
+
+async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Checkout service is unavailable. Please try again later.");
+  }
+  if (!response.ok) {
+    const message =
+      body && typeof body === "object" && "error" in body && typeof body.error === "string"
+        ? body.error
+        : "Checkout service is unavailable. Please try again later.";
+    throw new Error(message);
+  }
+  return body as T;
+}
+
+function ProductCard({
+  product,
+  onAdd,
+}: {
+  product: StoreProduct;
+  onAdd: (product: StoreProduct, variant: StoreVariant, quantity: number) => void;
+}) {
+  const [variantId, setVariantId] = useState(product.defaultVariantId ?? product.variants[0]?.id);
+  const [quantity, setQuantity] = useState(1);
+  const variant = product.variants.find((candidate) => candidate.id === variantId);
+  const purchasable = product.currency === "USD" && Boolean(variant);
+
+  return (
+    <article {...stylex.props(styles.card)}>
+      <figure {...stylex.props(styles.figure)}>
+        <img
+          {...stylex.props(styles.image)}
+          src={variant?.image ?? product.mockups[0]}
+          alt={`${product.title}${variant ? ` — ${variant.title}` : ""}`}
+          loading="lazy"
+        />
+      </figure>
+      <div {...stylex.props(styles.productBody)}>
+        <div {...stylex.props(styles.productHeading)}>
+          <h3 {...stylex.props(styles.productTitle)}>{product.title}</h3>
+          <span {...stylex.props(styles.price)}>
+            {money(variant?.price ?? product.price, product.currency)}
+          </span>
+        </div>
+        <p {...stylex.props(styles.description)}>
+          {product.description || "Printify-made / unisex fit"}
+        </p>
+        {purchasable ? (
+          <div {...stylex.props(styles.productControls)}>
+            <label {...stylex.props(styles.field)}>
+              <span>Size / color</span>
+              <select
+                {...stylex.props(styles.input)}
+                value={variantId}
+                onChange={(event) => setVariantId(Number(event.target.value))}
+              >
+                {product.variants.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.options.length
+                      ? choice.options.map(({ name, value }) => `${name}: ${value}`).join(" / ")
+                      : choice.title}{" "}
+                    — {money(choice.price, product.currency)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div {...stylex.props(styles.addRow)}>
+              <label {...stylex.props(styles.field)}>
+                <span>Quantity</span>
+                <input
+                  {...stylex.props(styles.input)}
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={quantity}
+                  onChange={(event) => setQuantity(Number(event.target.value))}
+                />
+              </label>
+              <button
+                {...stylex.props(styles.primaryButton)}
+                type="button"
+                disabled={!Number.isInteger(quantity) || quantity < 1 || quantity > 20}
+                onClick={() => variant && onAdd(product, variant, quantity)}
+              >
+                Add to bag
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p {...stylex.props(styles.unavailable)}>
+            {product.currency !== "USD"
+              ? "Checkout is available in USD only."
+              : "Preview only — this item is not available for checkout."}
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function CartQuantity({
+  line,
+  title,
+  variantTitle,
+  onUpdate,
+  onEdit,
+}: {
+  line: CartLine;
+  title: string;
+  variantTitle: string;
+  onUpdate: (productId: string, variantId: number, quantity: number) => boolean;
+  onEdit: () => void;
+}) {
+  const [draft, setDraft] = useState(String(line.quantity));
+  useEffect(() => setDraft(String(line.quantity)), [line.quantity]);
+
+  return (
+    <label {...stylex.props(styles.field)}>
+      <span>Quantity</span>
+      <input
+        {...stylex.props(styles.input, styles.cartQuantity)}
+        aria-label={`${title}, ${variantTitle} quantity`}
+        type="number"
+        min="0"
+        max="20"
+        step="1"
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          onEdit();
+        }}
+        onBlur={() => {
+          const quantity = Number(draft);
+          if (draft !== "" && Number.isInteger(quantity) && quantity >= 0 && quantity <= 20) {
+            if (quantity !== line.quantity && !onUpdate(line.productId, line.variantId, quantity))
+              setDraft(String(line.quantity));
+          } else {
+            setDraft(String(line.quantity));
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
+const addressFields: {
+  key: keyof Address;
+  label: string;
+  autoComplete: string;
+  required?: boolean;
+  type?: string;
+}[] = [
+  { key: "first_name", label: "First name", autoComplete: "given-name", required: true },
+  { key: "last_name", label: "Last name", autoComplete: "family-name", required: true },
+  { key: "email", label: "Email", autoComplete: "email", type: "email", required: true },
+  { key: "phone", label: "Phone", autoComplete: "tel", type: "tel", required: true },
+  { key: "country", label: "Country (2-letter code)", autoComplete: "country", required: true },
+  { key: "region", label: "State / province", autoComplete: "address-level1" },
+  { key: "address1", label: "Street address", autoComplete: "address-line1", required: true },
+  { key: "address2", label: "Apartment / suite", autoComplete: "address-line2" },
+  { key: "city", label: "City", autoComplete: "address-level2", required: true },
+  { key: "zip", label: "Postal code", autoComplete: "postal-code", required: true },
+];
+
+export default function Checkout({ products }: { products: StoreProduct[] }) {
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [address, setAddress] = useState<Address>(emptyAddress);
+  const [quote, setQuote] = useState<ShippingQuote | null>(null);
+  const [shippingMethod, setShippingMethod] = useState<number | null>(null);
+  const [pending, setPending] = useState<"shipping" | "checkout" | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const quoteRequest = useRef<AbortController | null>(null);
+  const checkoutRequest = useRef<AbortController | null>(null);
+  const [cartLoaded, setCartLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("utxowear-cart") ?? "[]") as unknown;
+      if (Array.isArray(saved)) {
+        const available = new Map(
+          products.flatMap((product) =>
+            product.variants.map((variant) => [`${product.id}:${variant.id}`, variant] as const),
+          ),
+        );
+        const lines = saved.filter(
+          (line): line is CartLine =>
+            line !== null &&
+            typeof line === "object" &&
+            typeof line.productId === "string" &&
+            Number.isSafeInteger(line.variantId) &&
+            Number.isSafeInteger(line.quantity) &&
+            line.quantity > 0 &&
+            line.quantity <= 20 &&
+            available.has(`${line.productId}:${line.variantId}`),
+        );
+        if (lines.length <= 12 && lines.reduce((sum, line) => sum + line.quantity, 0) <= 50)
+          setCart(lines);
+      }
+    } catch {
+      // Invalid local cart data is ignored; the server independently validates checkout.
+    }
+    setCartLoaded(true);
+  }, [products]);
+
+  useEffect(() => {
+    if (!cartLoaded) return;
+    try {
+      localStorage.setItem("utxowear-cart", JSON.stringify(cart));
+    } catch {
+      // Browsers can disable local storage; the in-memory bag still works.
+    }
+  }, [cart, cartLoaded]);
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get("checkout");
+    if (status === "success") {
+      setCart([]);
+      try {
+        localStorage.removeItem("utxowear-cart");
+      } catch {
+        // The empty cart is still cleared in memory if storage is unavailable.
+      }
+      setNotice(
+        "Returned from payment. Fulfillment starts only after Stripe confirms payment; keep your payment receipt for support.",
+      );
+    }
+    if (status === "cancel") setNotice("Checkout was canceled. You can start again from the bag.");
+  }, []);
+
+  useEffect(() => {
+    const badge = document.querySelector("[data-cart-count]");
+    const count = cart.reduce((total, line) => total + line.quantity, 0);
+    if (badge) badge.textContent = String(count);
+    const bag = document.querySelector("[data-cart-link]");
+    if (bag)
+      bag.setAttribute(
+        "aria-label",
+        `Shopping bag with ${count} ${count === 1 ? "item" : "items"}`,
+      );
+  }, [cart]);
+
+  function invalidateQuote() {
+    quoteRequest.current?.abort();
+    quoteRequest.current = null;
+    checkoutRequest.current?.abort();
+    checkoutRequest.current = null;
+    if (pending !== null) setPending(null);
+    setQuote(null);
+    setShippingMethod(null);
+    setError("");
+  }
+
+  function add(product: StoreProduct, variant: StoreVariant, quantity: number) {
+    const old = cart.find((line) => line.productId === product.id && line.variantId === variant.id);
+    const total = cart.reduce((sum, line) => sum + line.quantity, 0);
+    if (
+      (!old && cart.length >= 12) ||
+      total + quantity > 50 ||
+      (old && old.quantity + quantity > 20)
+    ) {
+      setError("Your bag supports up to 12 variants, 20 of each, and 50 items total.");
+      return;
+    }
+    setCart((lines) =>
+      old
+        ? lines.map((line) =>
+            line.productId === product.id && line.variantId === variant.id
+              ? { ...line, quantity: line.quantity + quantity }
+              : line,
+          )
+        : [...lines, { productId: product.id, variantId: variant.id, quantity }],
+    );
+    invalidateQuote();
+    setNotice(`${product.title} (${variant.title}) added to bag.`);
+  }
+
+  function updateCart(productId: string, variantId: number, quantity: number): boolean {
+    if (!Number.isInteger(quantity) || quantity < 0 || quantity > 20) return false;
+    if (
+      cart.reduce(
+        (sum, line) =>
+          sum +
+          (line.productId === productId && line.variantId === variantId ? quantity : line.quantity),
+        0,
+      ) > 50
+    ) {
+      setError("Your bag supports at most 50 items total.");
+      return false;
+    }
+    setCart((lines) =>
+      lines
+        .map((line) =>
+          line.productId === productId && line.variantId === variantId
+            ? { ...line, quantity }
+            : line,
+        )
+        .filter((line) => line.quantity > 0),
+    );
+    invalidateQuote();
+    return true;
+  }
+
+  async function requestQuote(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+    event.preventDefault();
+    if (!cart.length) return;
+    const controller = new AbortController();
+    quoteRequest.current = controller;
+    setPending("shipping");
+    setError("");
+    setNotice("");
+    setQuote(null);
+    setShippingMethod(null);
+    try {
+      const result = await postJson<ShippingQuote>(
+        "/api/shipping",
+        { items: cart, address },
+        controller.signal,
+      );
+      if (quoteRequest.current !== controller) return;
+      if (result.currency !== "USD" || !Array.isArray(result.options))
+        throw new Error("Shipping quote is unavailable. Please try again later.");
+      setQuote(result);
+      setShippingMethod(result.options[0]?.method ?? null);
+      if (result.options.length === 0)
+        setError("No shipping methods are available for this address.");
+    } catch (cause) {
+      if (quoteRequest.current === controller)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Shipping quote is unavailable. Please try again later.",
+        );
+    } finally {
+      if (quoteRequest.current === controller) {
+        quoteRequest.current = null;
+        setPending(null);
+      }
+    }
+  }
+
+  async function startCheckout() {
+    if (!quote || shippingMethod === null || pending) return;
+    const controller = new AbortController();
+    checkoutRequest.current = controller;
+    setPending("checkout");
+    setError("");
+    try {
+      const result = await postJson<{ url: string }>(
+        "/api/checkout",
+        { items: cart, address, shippingMethod },
+        controller.signal,
+      );
+      if (checkoutRequest.current !== controller) return;
+      const destination = new URL(result.url);
+      if (
+        destination.protocol !== "https:" ||
+        !["checkout.stripe.com", "pay.stripe.com"].includes(destination.hostname)
+      ) {
+        throw new Error("Invalid payment destination. Please try again later.");
+      }
+      window.location.assign(destination.href);
+    } catch (cause) {
+      if (checkoutRequest.current === controller) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Checkout is unavailable. Please try again later.",
+        );
+        setPending(null);
+      }
+    } finally {
+      if (checkoutRequest.current === controller) checkoutRequest.current = null;
+    }
+  }
+
+  const selectedShipping = quote?.options.find((option) => option.method === shippingMethod);
+  const itemCount = cart.reduce((total, line) => total + line.quantity, 0);
+  const localSubtotal = cart.reduce((total, line) => {
+    const product = products.find((candidate) => candidate.id === line.productId);
+    return (
+      total +
+      (product?.variants.find((variant) => variant.id === line.variantId)?.price ?? 0) *
+        line.quantity
+    );
+  }, 0);
+
+  return (
+    <>
+      <div {...stylex.props(styles.productGrid)}>
+        {products.map((product) => (
+          <ProductCard key={product.id} product={product} onAdd={add} />
+        ))}
+      </div>
+      <section id="cart" {...stylex.props(styles.checkoutPanel)} aria-labelledby="cart-title">
+        <h2 id="cart-title" {...stylex.props(styles.checkoutHeading)}>
+          Your bag
+        </h2>
+        {notice && (
+          <p {...stylex.props(styles.notice)} role="status">
+            {notice}
+          </p>
+        )}
+        {cart.length === 0 ? (
+          <p {...stylex.props(styles.muted)}>
+            Your bag is empty. Choose a size or color above to get started.
+          </p>
+        ) : (
+          <>
+            <ul {...stylex.props(styles.cartLines)}>
+              {cart.map((line) => {
+                const product = products.find((candidate) => candidate.id === line.productId);
+                const variant = product?.variants.find(
+                  (candidate) => candidate.id === line.variantId,
+                );
+                if (!product || !variant) return null;
+                return (
+                  <li
+                    key={`${line.productId}:${line.variantId}`}
+                    {...stylex.props(styles.cartLine)}
+                  >
+                    <div>
+                      <strong>{product.title}</strong>
+                      <br />
+                      <span {...stylex.props(styles.muted)}>
+                        {variant.options
+                          .map(({ name, value }) => `${name}: ${value}`)
+                          .join(" / ") || variant.title}
+                      </span>
+                    </div>
+                    <CartQuantity
+                      line={line}
+                      title={product.title}
+                      variantTitle={variant.title}
+                      onUpdate={updateCart}
+                      onEdit={invalidateQuote}
+                    />
+                    <span>{money(variant.price * line.quantity)}</span>
+                    <button
+                      type="button"
+                      {...stylex.props(styles.removeButton)}
+                      onClick={() => updateCart(line.productId, line.variantId, 0)}
+                      aria-label={`Remove ${product.title}, ${variant.title}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <p {...stylex.props(styles.totalRow)}>
+              <span>
+                Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})
+              </span>
+              <strong>{money(localSubtotal)}</strong>
+            </p>
+            <form onSubmit={requestQuote} {...stylex.props(styles.checkoutForm)}>
+              <h3 {...stylex.props(styles.formHeading)}>Delivery address</h3>
+              <div {...stylex.props(styles.addressGrid)}>
+                {addressFields.map((field) => (
+                  <label key={field.key} {...stylex.props(styles.field)}>
+                    <span>{field.label}</span>
+                    <input
+                      {...stylex.props(styles.input)}
+                      name={field.key}
+                      type={field.type ?? "text"}
+                      autoComplete={field.autoComplete}
+                      value={address[field.key]}
+                      required={field.required}
+                      pattern={field.key === "country" ? "[A-Za-z]{2}" : undefined}
+                      maxLength={field.key === "country" ? 2 : undefined}
+                      onChange={(event) => {
+                        setAddress((previous) => ({
+                          ...previous,
+                          [field.key]:
+                            field.key === "country"
+                              ? event.target.value.toUpperCase()
+                              : event.target.value,
+                        }));
+                        invalidateQuote();
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <button
+                {...stylex.props(styles.primaryButton)}
+                type="submit"
+                disabled={pending !== null}
+              >
+                {pending === "shipping"
+                  ? "Getting shipping rates…"
+                  : quote
+                    ? "Update shipping rates"
+                    : "Get shipping rates"}
+              </button>
+            </form>
+            {quote && quote.options.length > 0 && (
+              <div {...stylex.props(styles.shippingSection)}>
+                <h3 {...stylex.props(styles.formHeading)}>Shipping method</h3>
+                {quote.options.map((option) => (
+                  <label key={option.method} {...stylex.props(styles.shippingChoice)}>
+                    <input
+                      type="radio"
+                      name="shippingMethod"
+                      checked={shippingMethod === option.method}
+                      onChange={() => setShippingMethod(option.method)}
+                    />
+                    <span>{option.label}</span>
+                    <strong>{money(option.price, quote.currency)}</strong>
+                  </label>
+                ))}
+                <p {...stylex.props(styles.totalRow)}>
+                  <span>Items</span>
+                  <strong>{money(quote.subtotal, quote.currency)}</strong>
+                </p>
+                <p {...stylex.props(styles.totalRow)}>
+                  <span>Shipping</span>
+                  <strong>
+                    {selectedShipping
+                      ? money(selectedShipping.price, quote.currency)
+                      : "Select a method"}
+                  </strong>
+                </p>
+                <p {...stylex.props(styles.totalRow, styles.grandTotal)}>
+                  <span>Estimated total before tax (USD)</span>
+                  <strong>
+                    {selectedShipping
+                      ? money(quote.subtotal + selectedShipping.price, quote.currency)
+                      : "—"}
+                  </strong>
+                </p>
+                <p {...stylex.props(styles.muted)}>
+                  Any applicable tax is calculated and shown at secure payment before you pay.
+                </p>
+              </div>
+            )}
+            {error && (
+              <p {...stylex.props(styles.error)} role="alert">
+                {error}
+              </p>
+            )}
+            <button
+              {...stylex.props(styles.primaryButton)}
+              type="button"
+              disabled={!quote || shippingMethod === null || pending !== null}
+              onClick={startCheckout}
+            >
+              {pending === "checkout" ? "Opening secure payment…" : "Continue to secure payment"}
+            </button>
+            {!quote && (
+              <p {...stylex.props(styles.muted)}>
+                Checkout is disabled until shipping rates are available. If the service is
+                unavailable, please try again later; no payment or order is placed.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+    </>
+  );
+}

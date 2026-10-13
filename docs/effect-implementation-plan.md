@@ -45,14 +45,14 @@ Acceptance: dependency resolves, a minimal Effect program typechecks, and baseli
 
 Use this small module layout; avoid a generic application framework:
 
-| File | Responsibility |
-| --- | --- |
-| `src/lib/printify.ts` | Existing public exports; Astro environment adapter; single Promise execution boundary |
-| `src/lib/printify/model.ts` | `StoreProduct`, input schemas, tagged errors, validated configuration type |
-| `src/lib/printify/parsing.ts` | Flight extraction, product decoding, pure normalization and shop selection |
-| `src/lib/printify/client.ts` | Injectable fetch service, request policy, shops and product-page effects |
-| `src/lib/printify/catalog.ts` | Source selection, pagination orchestration, fallback and safe diagnostics |
-| `src/lib/printify/*.test.ts` | Deterministic tests with synthetic fixtures |
+| File                          | Responsibility                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `src/lib/printify.ts`         | Existing public exports; Astro environment adapter; single Promise execution boundary |
+| `src/lib/printify/model.ts`   | `StoreProduct`, input schemas, tagged errors, validated configuration type            |
+| `src/lib/printify/parsing.ts` | Flight extraction, product decoding, pure normalization and shop selection            |
+| `src/lib/printify/client.ts`  | Injectable fetch service, request policy, shops and product-page effects              |
+| `src/lib/printify/catalog.ts` | Source selection, pagination orchestration, fallback and safe diagnostics             |
+| `src/lib/printify/*.test.ts`  | Deterministic tests with synthetic fixtures                                           |
 
 The facade re-exports `StoreProduct` as a type, preserving existing consumer imports. Internal modules must not import the facade or read `import.meta.env`.
 
@@ -97,18 +97,18 @@ Use Bun tests with an injected fetch layer and supplied configuration, without l
 
 Required scenarios:
 
-| Scenario | Expected result |
-| --- | --- |
-| No token; valid public storefront | Public products; no API requests |
-| Valid token; multiple API pages | All usable visible API products in source order |
-| API 401/403, decode error, missing shop, empty usable result, or failed later page | Public products; no partial API result |
-| Public source fails; API succeeds | API products using handle/store links |
-| Both sources fail or have no usable products | Local catalog with original names, price, currency, and image |
-| Transient failure followed by success | Bounded retry and successful products |
-| Permanent status/decode failure | No retry |
-| Hung fetch or hung response body | Cancellation followed by fallback |
-| Explicit shop ID mismatch, malformed pagination, or page cap | Typed API failure and public fallback |
-| Invalid URL/currency override | Safe default and renderable catalog |
+| Scenario                                                                           | Expected result                                               |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| No token; valid public storefront                                                  | Public products; no API requests                              |
+| Valid token; multiple API pages                                                    | All usable visible API products in source order               |
+| API 401/403, decode error, missing shop, empty usable result, or failed later page | Public products; no partial API result                        |
+| Public source fails; API succeeds                                                  | API products using handle/store links                         |
+| Both sources fail or have no usable products                                       | Local catalog with original names, price, currency, and image |
+| Transient failure followed by success                                              | Bounded retry and successful products                         |
+| Permanent status/decode failure                                                    | No retry                                                      |
+| Hung fetch or hung response body                                                   | Cancellation followed by fallback                             |
+| Explicit shop ID mismatch, malformed pagination, or page cap                       | Typed API failure and public fallback                         |
+| Invalid URL/currency override                                                      | Safe default and renderable catalog                           |
 
 Also test normalization details and that captured diagnostics never contain a synthetic token. Test the facade separately with absent credentials or an environment fixture so environment translation is covered.
 

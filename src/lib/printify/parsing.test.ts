@@ -30,27 +30,61 @@ const apiProduct: PrintifyProduct = {
   title: "API shirt",
   description: "<p>Heavy</p> cotton",
   visible: true,
-  images: [
+  options: [
     {
-      src: "back.png",
-      position: "back",
-      is_default: false,
+      name: "Color",
+      values: [
+        { id: 10, title: "Black" },
+        { id: 11, title: "White" },
+      ],
     },
     {
-      src: "front.png",
-      position: "front",
-      is_default: false,
-    },
-    {
-      src: "default.png",
-      position: "back",
-      is_default: true,
+      name: "Size",
+      values: [
+        { id: 20, title: "S" },
+        { id: 21, title: "M" },
+      ],
     },
   ],
+  images: [
+    { src: "back.png", position: "back", is_default: false },
+    { src: "front.png", position: "front", is_default: false, variant_ids: [101] },
+    { src: "default.png", position: "back", is_default: true, variant_ids: [102] },
+  ],
   variants: [
-    { price: 7200, is_enabled: true, is_default: false },
-    { price: 6800, is_enabled: true, is_default: true },
-    { price: 100, is_enabled: false, is_default: true },
+    {
+      id: 101,
+      title: "Black / S",
+      options: [10, 20],
+      price: 7200,
+      is_enabled: true,
+      is_default: false,
+    },
+    {
+      id: 102,
+      title: "White / M",
+      options: [11, 21],
+      price: 6800,
+      is_enabled: true,
+      is_default: true,
+    },
+    {
+      id: 103,
+      title: "White / S",
+      options: [11, 20],
+      price: 100,
+      is_enabled: false,
+      is_default: true,
+    },
+    {
+      id: 104,
+      title: "Black / M",
+      options: [10, 21],
+      price: 8000,
+      is_enabled: true,
+      is_available: false,
+      is_default: false,
+    },
   ],
 };
 
@@ -101,7 +135,7 @@ describe("public storefront parsing", () => {
 });
 
 describe("product normalization", () => {
-  test("cleans descriptions and keeps public links and prices", () => {
+  test("cleans descriptions and marks public products unpurchasable", () => {
     expect(plainText(" <b>Heavy</b>&nbsp; cotton ")).toBe("Heavy cotton");
     expect(normalizePublicProduct(publicProduct, config)).toEqual({
       id: "api-1",
@@ -109,15 +143,15 @@ describe("product normalization", () => {
       description: "Heavy cotton",
       price: 6400,
       currency: "EUR",
-      href: "https://utxowear.printify.me/products/public-shirt",
       mockups: ["https://cdn.example/public.png"],
+      variants: [],
+      defaultVariantId: null,
     });
   });
 
-  test("filters invisible API products, selects default pricing, and orders mockups", () => {
+  test("exposes enabled options, prices and mockups without disabled combinations", () => {
     const result = normalizeApiProducts(
       [apiProduct, { ...apiProduct, id: "hidden", visible: false }],
-      [publicProduct],
       config,
     );
 
@@ -128,10 +162,43 @@ describe("product normalization", () => {
         description: "Heavy cotton",
         price: 6800,
         currency: "EUR",
-        href: "https://utxowear.printify.me/products/public-shirt",
         mockups: ["default.png", "front.png", "back.png"],
+        defaultVariantId: 102,
+        variants: [
+          {
+            id: 101,
+            title: "Black / S",
+            price: 7200,
+            options: [
+              { name: "Color", value: "Black" },
+              { name: "Size", value: "S" },
+            ],
+            image: "front.png",
+          },
+          {
+            id: 102,
+            title: "White / M",
+            price: 6800,
+            options: [
+              { name: "Color", value: "White" },
+              { name: "Size", value: "M" },
+            ],
+            image: "default.png",
+          },
+        ],
       },
     ]);
+  });
+
+  test("uses the first enabled variant when Printify has no enabled default", () => {
+    const product = {
+      ...apiProduct,
+      variants: apiProduct.variants.map((variant) => ({ ...variant, is_default: false })),
+    };
+    expect(normalizeApiProducts([product], config)[0]).toMatchObject({
+      price: 7200,
+      defaultVariantId: 101,
+    });
   });
 
   test("uses the configured shop exactly, then hostname matching and first shop", () => {

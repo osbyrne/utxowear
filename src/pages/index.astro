@@ -6,9 +6,10 @@ import Footer from '../components/Footer.astro';
 import Shirt from '../components/Shirt.tsx';
 import ProductList from '../components/ProductList.astro';
 import { getPrintifyProducts } from '../lib/printify';
+import { env } from 'cloudflare:workers';
 import '../app.css';
 
-const products = await getPrintifyProducts();
+const products = await getPrintifyProducts(env);
 ---
 
 <html lang="en">

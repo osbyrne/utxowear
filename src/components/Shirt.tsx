@@ -1,11 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import {
-  Canvas,
-  type ThreeEvent,
-  useFrame,
-  useLoader,
-} from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useLoader } from "@react-three/fiber";
 import {
   Body,
   Box,
@@ -54,9 +49,7 @@ const HANGER_LEFT_ARM: [number, number, number][] = [
   [-1.2, 1.7, HANGER_DEPTH],
   [-1.62, 1.45, HANGER_DEPTH],
 ];
-const HANGER_RIGHT_ARM: [number, number, number][] = HANGER_LEFT_ARM.map(
-  ([x, y, z]) => [-x, y, z],
-);
+const HANGER_RIGHT_ARM: [number, number, number][] = HANGER_LEFT_ARM.map(([x, y, z]) => [-x, y, z]);
 const HANGER_LOWER_RAIL: [number, number, number][] = [
   [-1.62, 1.45, HANGER_DEPTH],
   [-1.25, 0.94, HANGER_DEPTH],
@@ -148,10 +141,7 @@ function prepareShirtGeometry(scene: Object3D) {
   let largestMeshVertexCount = 0;
   scene.traverse((object) => {
     const mesh = object as Mesh;
-    if (
-      !mesh.isMesh ||
-      mesh.geometry.attributes.position.count <= largestMeshVertexCount
-    ) {
+    if (!mesh.isMesh || mesh.geometry.attributes.position.count <= largestMeshVertexCount) {
       return;
     }
     shirtMesh = mesh;
@@ -159,8 +149,7 @@ function prepareShirtGeometry(scene: Object3D) {
   });
 
   const selectedShirtMesh = shirtMesh as Mesh | null;
-  if (!selectedShirtMesh)
-    throw new Error("tshirt.glb does not contain a mesh.");
+  if (!selectedShirtMesh) throw new Error("tshirt.glb does not contain a mesh.");
 
   scene.traverse((object) => object.updateMatrixWorld());
   const geometry = selectedShirtMesh.geometry.clone();
@@ -187,10 +176,8 @@ function prepareShirtGeometry(scene: Object3D) {
   const printMasks = new Float32Array(position.count);
 
   for (let index = 0; index < position.count; index += 1) {
-    printUvs[index * 2] =
-      (position.getX(index) - PRINT_CENTER_X) / PRINT_WIDTH + 0.5;
-    printUvs[index * 2 + 1] =
-      (position.getY(index) - PRINT_CENTER_Y) / PRINT_HEIGHT + 0.5;
+    printUvs[index * 2] = (position.getX(index) - PRINT_CENTER_X) / PRINT_WIDTH + 0.5;
+    printUvs[index * 2 + 1] = (position.getY(index) - PRINT_CENTER_Y) / PRINT_HEIGHT + 0.5;
     printMasks[index] = normal.getZ(index) > 0.5 ? 1 : 0;
   }
 
@@ -245,9 +232,7 @@ function createPrintedShirtMaterial(printTexture: Texture) {
   return material;
 }
 
-function createShirtSimulation(
-  sourceGeometry: BufferGeometry,
-): ShirtSimulation {
+function createShirtSimulation(sourceGeometry: BufferGeometry): ShirtSimulation {
   const world = new World({ gravity: new Vec3(0, -12.5, 0) });
   world.allowSleep = false;
   world.broadphase = new SAPBroadphase(world);
@@ -278,11 +263,7 @@ function createShirtSimulation(
   let totalEdgeLength = 0;
   let edgeCount = 0;
   const uniqueEdges = new Set<string>();
-  for (
-    let triangleStart = 0;
-    triangleStart < indices.length;
-    triangleStart += 3
-  ) {
+  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
     const triangle = indices.slice(triangleStart, triangleStart + 3);
     for (const [first, second] of [
       [triangle[0], triangle[1]],
@@ -335,22 +316,13 @@ function createShirtSimulation(
       firstPoint.y - secondPoint.y,
       firstPoint.z - secondPoint.z,
     );
-    const constraint = new DistanceConstraint(
-      bodies[first],
-      bodies[second],
-      distance,
-      stiffness,
-    );
+    const constraint = new DistanceConstraint(bodies[first], bodies[second], distance, stiffness);
     // Connected vertices must be free to approach each other as the cloth folds.
     constraint.collideConnected = false;
     world.addConstraint(constraint);
   };
 
-  for (
-    let triangleStart = 0;
-    triangleStart < indices.length;
-    triangleStart += 3
-  ) {
+  for (let triangleStart = 0; triangleStart < indices.length; triangleStart += 3) {
     const first = indices[triangleStart];
     const second = indices[triangleStart + 1];
     const third = indices[triangleStart + 2];
@@ -384,18 +356,9 @@ function ClothShirt() {
     texture.needsUpdate = true;
     return texture;
   }, [loadedPrintTexture]);
-  const material = useMemo(
-    () => createPrintedShirtMaterial(printTexture),
-    [printTexture],
-  );
-  const sourceGeometry = useMemo(
-    () => prepareShirtGeometry(gltf.scene),
-    [gltf],
-  );
-  const simulation = useMemo(
-    () => createShirtSimulation(sourceGeometry),
-    [sourceGeometry],
-  );
+  const material = useMemo(() => createPrintedShirtMaterial(printTexture), [printTexture]);
+  const sourceGeometry = useMemo(() => prepareShirtGeometry(gltf.scene), [gltf]);
+  const simulation = useMemo(() => createShirtSimulation(sourceGeometry), [sourceGeometry]);
   const dragConstraint = useRef<PointToPointConstraint | null>(null);
   const draggedBody = useRef<Body | null>(null);
   const activePointerId = useRef<number | null>(null);
@@ -437,8 +400,7 @@ function ClothShirt() {
   );
 
   useEffect(() => {
-    const handlePointerEnd = (event: PointerEvent) =>
-      finishDrag(event.pointerId);
+    const handlePointerEnd = (event: PointerEvent) => finishDrag(event.pointerId);
     const handleWindowBlur = () => finishDrag();
 
     window.addEventListener("pointerup", handlePointerEnd);
@@ -461,11 +423,7 @@ function ClothShirt() {
   };
 
   const startDrag = (event: ThreeEvent<PointerEvent>) => {
-    if (
-      event.button !== 0 ||
-      !event.isPrimary ||
-      activePointerId.current !== null
-    ) {
+    if (event.button !== 0 || !event.isPrimary || activePointerId.current !== null) {
       return;
     }
 
@@ -492,15 +450,8 @@ function ClothShirt() {
     captureTarget.current = target;
 
     event.camera.getWorldDirection(cameraDirection.current);
-    dragPlane.current.setFromNormalAndCoplanarPoint(
-      cameraDirection.current,
-      event.point,
-    );
-    simulation.cursorBody.position.set(
-      event.point.x,
-      event.point.y,
-      event.point.z,
-    );
+    dragPlane.current.setFromNormalAndCoplanarPoint(cameraDirection.current, event.point);
+    simulation.cursorBody.position.set(event.point.x, event.point.y, event.point.z);
     simulation.cursorBody.velocity.setZero();
 
     const constraint = new PointToPointConstraint(
@@ -545,9 +496,7 @@ function ClothShirt() {
 
   useFrame(({ clock }, delta) => {
     const elapsed = clock.getElapsedTime();
-    const positions = simulation.geometry.getAttribute(
-      "position",
-    ) as BufferAttribute;
+    const positions = simulation.geometry.getAttribute("position") as BufferAttribute;
 
     simulation.bodies.forEach((body, index) => {
       if (body.mass === 0 || body === draggedBody.current) return;
@@ -561,12 +510,7 @@ function ClothShirt() {
 
     simulation.world.step(FIXED_TIME_STEP, Math.min(delta, 0.05), 3);
     simulation.bodies.forEach((body, index) => {
-      positions.setXYZ(
-        index,
-        body.position.x,
-        body.position.y,
-        body.position.z,
-      );
+      positions.setXYZ(index, body.position.x, body.position.y, body.position.z);
     });
     positions.needsUpdate = true;
     simulation.geometry.computeVertexNormals();

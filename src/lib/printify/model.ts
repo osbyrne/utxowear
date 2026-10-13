@@ -13,14 +13,23 @@ export const MAX_API_PAGES = 100;
 
 export type Source = "public" | "api";
 
+export type StoreVariant = {
+  id: number;
+  title: string;
+  price: number;
+  options: { name: string; value: string }[];
+  image?: string;
+};
+
 export type StoreProduct = {
   id: string;
   title: string;
   description: string;
   price: number;
   currency: string;
-  href: string;
   mockups: string[];
+  variants: StoreVariant[];
+  defaultVariantId: number | null;
 };
 
 export type PrintifyConfigInput = {
@@ -204,6 +213,7 @@ export function validatePrintifyConfig(
 }
 
 const FiniteNonNegativeNumber = Schema.Number.pipe(Schema.finite(), Schema.nonNegative());
+const NonNegativeInteger = Schema.Number.pipe(Schema.int(), Schema.nonNegative());
 const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive());
 
 export const PrintifyShopSchema = Schema.Struct({
@@ -217,11 +227,21 @@ export const PrintifyImageSchema = Schema.Struct({
   src: Schema.String,
   position: Schema.String,
   is_default: Schema.Boolean,
+  variant_ids: Schema.optional(Schema.Array(PositiveInteger)),
+});
+
+export const PrintifyOptionSchema = Schema.Struct({
+  name: Schema.String,
+  values: Schema.Array(Schema.Struct({ id: PositiveInteger, title: Schema.String })),
 });
 
 export const PrintifyVariantSchema = Schema.Struct({
-  price: FiniteNonNegativeNumber,
+  id: PositiveInteger,
+  title: Schema.String,
+  options: Schema.Array(PositiveInteger),
+  price: NonNegativeInteger,
   is_enabled: Schema.Boolean,
+  is_available: Schema.optional(Schema.Boolean),
   is_default: Schema.Boolean,
 });
 
@@ -231,6 +251,7 @@ export const PrintifyProductSchema = Schema.Struct({
   description: Schema.optional(Schema.String),
   visible: Schema.Boolean,
   images: Schema.Array(PrintifyImageSchema),
+  options: Schema.optional(Schema.Array(PrintifyOptionSchema)),
   variants: Schema.Array(PrintifyVariantSchema),
   external: Schema.optional(
     Schema.Struct({

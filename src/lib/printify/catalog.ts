@@ -126,7 +126,6 @@ function publicSource(
 
 function apiSource(
   config: PrintifyConfig,
-  publicProducts: readonly PublicStoreProduct[],
 ): Effect.Effect<StoreProduct[], ApiSourceError, import("./client").PrintifyFetch> {
   return Effect.gen(function* () {
     const shops = yield* fetchShops(config);
@@ -184,18 +183,19 @@ function apiSource(
       if (page >= response.last_page) break;
     }
 
-    return normalizeApiProducts(products, publicProducts, config);
+    return normalizeApiProducts(products, config);
   });
 }
 
-function fallbackProducts(config: PrintifyConfig, names: readonly string[]): StoreProduct[] {
+function fallbackProducts(names: readonly string[]): StoreProduct[] {
   return names.map((title, index) => ({
     id: `fallback-${index}`,
     title,
     description: "Heavyweight cotton / unisex fit",
     price: 6400,
     currency: "USD",
-    href: config.storeUrl,
+    variants: [],
+    defaultVariantId: null,
     mockups: ["/shirt_transparent.png"],
   }));
 }
@@ -234,9 +234,7 @@ export function makeCatalog(
     const publicStoreProducts = normalizePublicProducts(publicProducts, validated);
 
     if (validated.token) {
-      const apiOutcome = yield* Effect.either(
-        withSourceBudget("api", apiSource(validated, publicProducts)),
-      );
+      const apiOutcome = yield* Effect.either(withSourceBudget("api", apiSource(validated)));
 
       if (Either.isRight(apiOutcome) && apiOutcome.right.length > 0) {
         return apiOutcome.right;
@@ -254,6 +252,6 @@ export function makeCatalog(
       log({ source: "public", tag: "EmptyCatalog" });
     }
 
-    return fallbackProducts(validated, names);
+    return fallbackProducts(names);
   });
 }

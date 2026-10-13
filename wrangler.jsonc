@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "utxowear",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2025-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS", "directory": "./dist" },
+  "d1_databases": [
+    {
+      "binding": "CHECKOUT_DB",
+      "database_name": "utxowear-checkout",
+      "migrations_dir": "migrations",
+    },
+  ],
+}

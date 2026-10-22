@@ -13,7 +13,7 @@ const products = await getPrintifyProducts(env);
 <Storefront>
   <main {...stylex.attrs(styles.main)}>
     <section {...stylex.attrs(styles.preview)} aria-label="3D shirt preview">
-      <Shirt client:load />
+      <Shirt client:only="react" />
     </section>
     <section id="shop" {...stylex.attrs(styles.shop)} aria-label="Featured products">
       <ProductList products={products} />

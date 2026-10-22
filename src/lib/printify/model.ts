@@ -27,6 +27,7 @@ export type StoreProduct = {
   description: string;
   price: number;
   currency: string;
+  checkoutUnavailableReason?: string;
   mockups: string[];
   variants: StoreVariant[];
   defaultVariantId: number | null;
@@ -236,6 +237,7 @@ export const PrintifyOptionSchema = Schema.Struct({
 });
 
 export const PrintifyVariantSchema = Schema.Struct({
+  currency: Schema.optional(Schema.Literal("USD")),
   id: PositiveInteger,
   title: Schema.String,
   options: Schema.Array(PositiveInteger),
@@ -246,6 +248,7 @@ export const PrintifyVariantSchema = Schema.Struct({
 });
 
 export const PrintifyProductSchema = Schema.Struct({
+  currency: Schema.optional(Schema.Literal("USD")),
   id: Schema.String,
   title: Schema.String,
   description: Schema.optional(Schema.String),

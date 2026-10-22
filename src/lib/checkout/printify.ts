@@ -7,19 +7,22 @@ import {
   type ShippingOption,
   validateAmount,
 } from "./domain";
+import { usdPricing, type PricingConfig } from "../pricing";
 
 const BASE = "https://api.printify.com/v1";
 
-type PrintifyConfig = { token: string; shopId?: string; currency?: string };
+type PrintifyConfig = PricingConfig & { token: string; shopId?: string };
 
 type Product = {
   id: string;
   title: string;
   visible: boolean;
+  currency?: unknown;
   variants: {
     id: number;
     title?: string;
     price: number;
+    currency?: unknown;
     is_enabled: boolean;
     is_available?: boolean;
   }[];
@@ -72,12 +75,12 @@ export async function resolveShop(config: PrintifyConfig): Promise<string> {
   return String(shops[0].id);
 }
 
-export function shippingOptions(result: unknown): ShippingOption[] {
+export function shippingOptions(result: unknown, pricing = usdPricing({})): ShippingOption[] {
   if (typeof result !== "object" || result === null || Array.isArray(result))
     throw new CheckoutError("Invalid shipping quote from Printify.", 503);
   const data = result as Record<string, unknown>;
   if (data.currency !== undefined && data.currency !== "USD")
-    throw new CheckoutError("Only USD shipping is supported.", 503);
+    throw new CheckoutError("Printify shipping currency does not match its USD source.", 503);
   const methods = [
     { key: "standard", method: 1, label: "Standard" },
     {
@@ -94,7 +97,7 @@ export function shippingOptions(result: unknown): ShippingOption[] {
     if (value !== undefined && value !== null) {
       if (!validateAmount(value))
         throw new CheckoutError("Invalid shipping price from Printify.", 503);
-      options.push({ method, label, price: value });
+      options.push({ method, label, price: pricing.convert(value), currency: pricing.currency });
     }
   }
   if (!options.length) throw new CheckoutError("Shipping is unavailable for this address.", 400);
@@ -106,8 +109,7 @@ export async function quoteCart(
   items: CartItem[],
   address: Address,
 ): Promise<Quote> {
-  if (config.currency && config.currency.toUpperCase() !== "USD")
-    throw new CheckoutError("Only USD checkout is supported.", 503);
+  const pricing = usdPricing(config);
   const shopId = await resolveShop(config);
   const products = new Map<string, Product>();
   const priced: PricedItem[] = [];
@@ -122,6 +124,8 @@ export async function quoteCart(
       if (!result || typeof result !== "object" || Array.isArray(result))
         throw new CheckoutError("Invalid product response from Printify.", 503);
       product = result as Product;
+      if (product.currency !== undefined && product.currency !== "USD")
+        throw new CheckoutError("Printify product currency does not match its USD source.", 503);
       if (
         product.id !== item.productId ||
         product.visible !== true ||
@@ -132,6 +136,8 @@ export async function quoteCart(
       products.set(item.productId, product);
     }
     const variant = product.variants.find((candidate) => candidate.id === item.variantId);
+    if (variant?.currency !== undefined && variant.currency !== "USD")
+      throw new CheckoutError("Printify variant currency does not match its USD source.", 503);
     if (
       !variant ||
       variant.is_enabled !== true ||
@@ -141,13 +147,15 @@ export async function quoteCart(
     ) {
       throw new CheckoutError("A product variant is no longer available.");
     }
-    const lineTotal = variant.price * item.quantity;
+    const price = pricing.convert(variant.price);
+    const lineTotal = price * item.quantity;
     if (!Number.isSafeInteger(lineTotal) || subtotal + lineTotal > 99_999_999)
       throw new CheckoutError("Cart total is too large.");
     subtotal += lineTotal;
     priced.push({
       ...item,
-      price: variant.price,
+      price,
+      currency: pricing.currency,
       title: typeof product.title === "string" ? product.title.slice(0, 120) : "Product",
       variantTitle:
         typeof variant.title === "string" ? variant.title.slice(0, 100) : String(variant.id),
@@ -161,7 +169,14 @@ export async function quoteCart(
     })),
     address_to: address,
   });
-  return { shopId, items: priced, address, subtotal, options: shippingOptions(result) };
+  return {
+    shopId,
+    currency: pricing.currency,
+    items: priced,
+    address,
+    subtotal,
+    options: shippingOptions(result, pricing),
+  };
 }
 
 export async function createPrintifyOrder(

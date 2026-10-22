@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
+import Catalog from "./Catalog";
+import { money } from "./ProductCard";
 import { styles } from "../styles/storefront.stylex";
+import { validateAmount, type Currency } from "../lib/checkout/domain";
 
 type CartLine = { productId: string; variantId: number; quantity: number };
 type Address = {
@@ -16,8 +19,8 @@ type Address = {
   city: string;
   zip: string;
 };
-type ShippingOption = { method: number; label: string; price: number };
-type ShippingQuote = { options: ShippingOption[]; currency: string; subtotal: number };
+type ShippingOption = { method: number; label: string; price: number; currency: Currency };
+type ShippingQuote = { options: ShippingOption[]; currency: Currency; subtotal: number };
 
 const emptyAddress: Address = {
   first_name: "",
@@ -31,16 +34,6 @@ const emptyAddress: Address = {
   city: "",
   zip: "",
 };
-const formatters = new Map<string, Intl.NumberFormat>();
-function money(cents: number, currency = "USD") {
-  let formatter = formatters.get(currency);
-  if (!formatter) {
-    formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
-    formatters.set(currency, formatter);
-  }
-  return formatter.format(cents / 100);
-}
-
 async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
@@ -62,92 +55,6 @@ async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal)
     throw new Error(message);
   }
   return body as T;
-}
-
-function ProductCard({
-  product,
-  onAdd,
-}: {
-  product: StoreProduct;
-  onAdd: (product: StoreProduct, variant: StoreVariant, quantity: number) => void;
-}) {
-  const [variantId, setVariantId] = useState(product.defaultVariantId ?? product.variants[0]?.id);
-  const [quantity, setQuantity] = useState(1);
-  const variant = product.variants.find((candidate) => candidate.id === variantId);
-  const purchasable = product.currency === "USD" && Boolean(variant);
-
-  return (
-    <article {...stylex.props(styles.card)}>
-      <figure {...stylex.props(styles.figure)}>
-        <img
-          {...stylex.props(styles.image)}
-          src={variant?.image ?? product.mockups[0]}
-          alt={`${product.title}${variant ? ` — ${variant.title}` : ""}`}
-          loading="lazy"
-        />
-      </figure>
-      <div {...stylex.props(styles.productBody)}>
-        <div {...stylex.props(styles.productHeading)}>
-          <h3 {...stylex.props(styles.productTitle)}>{product.title}</h3>
-          <span {...stylex.props(styles.price)}>
-            {money(variant?.price ?? product.price, product.currency)}
-          </span>
-        </div>
-        <p {...stylex.props(styles.description)}>
-          {product.description || "Printify-made / unisex fit"}
-        </p>
-        {purchasable ? (
-          <div {...stylex.props(styles.productControls)}>
-            <label {...stylex.props(styles.field)}>
-              <span>Size / color</span>
-              <select
-                {...stylex.props(styles.input)}
-                value={variantId}
-                onChange={(event) => setVariantId(Number(event.target.value))}
-              >
-                {product.variants.map((choice) => (
-                  <option key={choice.id} value={choice.id}>
-                    {choice.options.length
-                      ? choice.options.map(({ name, value }) => `${name}: ${value}`).join(" / ")
-                      : choice.title}{" "}
-                    — {money(choice.price, product.currency)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div {...stylex.props(styles.addRow)}>
-              <label {...stylex.props(styles.field)}>
-                <span>Quantity</span>
-                <input
-                  {...stylex.props(styles.input)}
-                  type="number"
-                  min="1"
-                  max="20"
-                  step="1"
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
-                />
-              </label>
-              <button
-                {...stylex.props(styles.primaryButton)}
-                type="button"
-                disabled={!Number.isInteger(quantity) || quantity < 1 || quantity > 20}
-                onClick={() => variant && onAdd(product, variant, quantity)}
-              >
-                Add to bag
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p {...stylex.props(styles.unavailable)}>
-            {product.currency !== "USD"
-              ? "Checkout is available in USD only."
-              : "Preview only — this item is not available for checkout."}
-          </p>
-        )}
-      </div>
-    </article>
-  );
 }
 
 function CartQuantity({
@@ -217,7 +124,13 @@ const addressFields: {
   { key: "zip", label: "Postal code", autoComplete: "postal-code", required: true },
 ];
 
-export default function Checkout({ products }: { products: StoreProduct[] }) {
+export default function Checkout({
+  products,
+  catalog = false,
+}: {
+  products: StoreProduct[];
+  catalog?: boolean;
+}) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [address, setAddress] = useState<Address>(emptyAddress);
   const [quote, setQuote] = useState<ShippingQuote | null>(null);
@@ -228,15 +141,22 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
   const quoteRequest = useRef<AbortController | null>(null);
   const checkoutRequest = useRef<AbortController | null>(null);
   const [cartLoaded, setCartLoaded] = useState(false);
+  const cartCurrencies = new Set(
+    cart.map((line) => products.find((product) => product.id === line.productId)?.currency),
+  );
+  const currency = cartCurrencies.size === 1 ? [...cartCurrencies][0] : undefined;
+  const validCartCurrency = currency === "USD" || currency === "EUR";
 
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("utxowear-cart") ?? "[]") as unknown;
       if (Array.isArray(saved)) {
         const available = new Map(
-          products.flatMap((product) =>
-            product.variants.map((variant) => [`${product.id}:${variant.id}`, variant] as const),
-          ),
+          products
+            .filter((product) => !product.checkoutUnavailableReason)
+            .flatMap((product) =>
+              product.variants.map((variant) => [`${product.id}:${variant.id}`, variant] as const),
+            ),
         );
         const lines = saved.filter(
           (line): line is CartLine =>
@@ -307,6 +227,10 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
   }
 
   function add(product: StoreProduct, variant: StoreVariant, quantity: number) {
+    if (product.checkoutUnavailableReason || (cart.length && currency !== product.currency)) {
+      setError("Your bag must contain items in a single available currency.");
+      return;
+    }
     const old = cart.find((line) => line.productId === product.id && line.variantId === variant.id);
     const total = cart.reduce((sum, line) => sum + line.quantity, 0);
     if (
@@ -358,7 +282,10 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
 
   async function requestQuote(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
-    if (!cart.length) return;
+    if (!cart.length || !validCartCurrency) {
+      setError("Your bag must contain items in a single available currency.");
+      return;
+    }
     const controller = new AbortController();
     quoteRequest.current = controller;
     setPending("shipping");
@@ -369,11 +296,22 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
     try {
       const result = await postJson<ShippingQuote>(
         "/api/shipping",
-        { items: cart, address },
+        { items: cart, address, currency },
         controller.signal,
       );
       if (quoteRequest.current !== controller) return;
-      if (result.currency !== "USD" || !Array.isArray(result.options))
+      if (
+        result.currency !== currency ||
+        !validateAmount(result.subtotal) ||
+        !Array.isArray(result.options) ||
+        result.options.some(
+          (option) =>
+            option.currency !== result.currency ||
+            !validateAmount(option.price) ||
+            ![1, 2, 3, 4].includes(option.method) ||
+            typeof option.label !== "string",
+        )
+      )
         throw new Error("Shipping quote is unavailable. Please try again later.");
       setQuote(result);
       setShippingMethod(result.options[0]?.method ?? null);
@@ -395,7 +333,9 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
   }
 
   async function startCheckout() {
-    if (!quote || shippingMethod === null || pending) return;
+    const shipping = quote?.options.find((option) => option.method === shippingMethod);
+    if (!quote || !shipping || shippingMethod === null || pending || quote.currency !== currency)
+      return;
     const controller = new AbortController();
     checkoutRequest.current = controller;
     setPending("checkout");
@@ -403,7 +343,13 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
     try {
       const result = await postJson<{ url: string }>(
         "/api/checkout",
-        { items: cart, address, shippingMethod },
+        {
+          items: cart,
+          address,
+          shippingMethod,
+          currency: quote.currency,
+          expectedTotal: quote.subtotal + shipping.price,
+        },
         controller.signal,
       );
       if (checkoutRequest.current !== controller) return;
@@ -442,176 +388,180 @@ export default function Checkout({ products }: { products: StoreProduct[] }) {
 
   return (
     <>
-      <div {...stylex.props(styles.productGrid)}>
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} onAdd={add} />
-        ))}
-      </div>
-      <section id="cart" {...stylex.props(styles.checkoutPanel)} aria-labelledby="cart-title">
-        <h2 id="cart-title" {...stylex.props(styles.checkoutHeading)}>
-          Your bag
-        </h2>
-        {notice && (
-          <p {...stylex.props(styles.notice)} role="status">
-            {notice}
-          </p>
-        )}
-        {cart.length === 0 ? (
-          <p {...stylex.props(styles.muted)}>
-            Your bag is empty. Choose a size or color above to get started.
-          </p>
-        ) : (
-          <>
-            <ul {...stylex.props(styles.cartLines)}>
-              {cart.map((line) => {
-                const product = products.find((candidate) => candidate.id === line.productId);
-                const variant = product?.variants.find(
-                  (candidate) => candidate.id === line.variantId,
-                );
-                if (!product || !variant) return null;
-                return (
-                  <li
-                    key={`${line.productId}:${line.variantId}`}
-                    {...stylex.props(styles.cartLine)}
-                  >
-                    <div>
-                      <strong>{product.title}</strong>
-                      <br />
-                      <span {...stylex.props(styles.muted)}>
-                        {variant.options
-                          .map(({ name, value }) => `${name}: ${value}`)
-                          .join(" / ") || variant.title}
-                      </span>
-                    </div>
-                    <CartQuantity
-                      line={line}
-                      title={product.title}
-                      variantTitle={variant.title}
-                      onUpdate={updateCart}
-                      onEdit={invalidateQuote}
-                    />
-                    <span>{money(variant.price * line.quantity)}</span>
-                    <button
-                      type="button"
-                      {...stylex.props(styles.removeButton)}
-                      onClick={() => updateCart(line.productId, line.variantId, 0)}
-                      aria-label={`Remove ${product.title}, ${variant.title}`}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <p {...stylex.props(styles.totalRow)}>
-              <span>
-                Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})
-              </span>
-              <strong>{money(localSubtotal)}</strong>
+      <Catalog products={products} full={catalog} onAdd={add} />
+      {(cart.length > 0 || notice) && (
+        <section id="cart" {...stylex.props(styles.checkoutPanel)} aria-labelledby="cart-title">
+          <h2 id="cart-title" {...stylex.props(styles.checkoutHeading)}>
+            Your bag
+          </h2>
+          {notice && (
+            <p {...stylex.props(styles.notice)} role="status">
+              {notice}
             </p>
-            <form onSubmit={requestQuote} {...stylex.props(styles.checkoutForm)}>
-              <h3 {...stylex.props(styles.formHeading)}>Delivery address</h3>
-              <div {...stylex.props(styles.addressGrid)}>
-                {addressFields.map((field) => (
-                  <label key={field.key} {...stylex.props(styles.field)}>
-                    <span>{field.label}</span>
-                    <input
-                      {...stylex.props(styles.input)}
-                      name={field.key}
-                      type={field.type ?? "text"}
-                      autoComplete={field.autoComplete}
-                      value={address[field.key]}
-                      required={field.required}
-                      pattern={field.key === "country" ? "[A-Za-z]{2}" : undefined}
-                      maxLength={field.key === "country" ? 2 : undefined}
-                      onChange={(event) => {
-                        setAddress((previous) => ({
-                          ...previous,
-                          [field.key]:
-                            field.key === "country"
-                              ? event.target.value.toUpperCase()
-                              : event.target.value,
-                        }));
-                        invalidateQuote();
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
+          )}
+          {cart.length > 0 && (
+            <>
+              <ul {...stylex.props(styles.cartLines)}>
+                {cart.map((line) => {
+                  const product = products.find((candidate) => candidate.id === line.productId);
+                  const variant = product?.variants.find(
+                    (candidate) => candidate.id === line.variantId,
+                  );
+                  if (!product || !variant) return null;
+                  return (
+                    <li
+                      key={`${line.productId}:${line.variantId}`}
+                      {...stylex.props(styles.cartLine)}
+                    >
+                      <div>
+                        <strong>{product.title}</strong>
+                        <br />
+                        <span {...stylex.props(styles.muted)}>
+                          {variant.options
+                            .map(({ name, value }) => `${name}: ${value}`)
+                            .join(" / ") || variant.title}
+                        </span>
+                      </div>
+                      <CartQuantity
+                        line={line}
+                        title={product.title}
+                        variantTitle={variant.title}
+                        onUpdate={updateCart}
+                        onEdit={invalidateQuote}
+                      />
+                      <span>{money(variant.price * line.quantity, product.currency)}</span>
+                      <button
+                        type="button"
+                        {...stylex.props(styles.removeButton)}
+                        onClick={() => updateCart(line.productId, line.variantId, 0)}
+                        aria-label={`Remove ${product.title}, ${variant.title}`}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p {...stylex.props(styles.totalRow)}>
+                <span>
+                  Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})
+                </span>
+                <strong>
+                  {validCartCurrency
+                    ? money(quote?.subtotal ?? localSubtotal, currency)
+                    : "Mixed currencies — update your bag"}
+                </strong>
+              </p>
+              {currency === "USD" && (
+                <p {...stylex.props(styles.muted)}>
+                  Prices and payments are in USD. Your card issuer handles currency conversion
+                  and may charge exchange fees.
+                </p>
+              )}
+              <form onSubmit={requestQuote} {...stylex.props(styles.checkoutForm)}>
+                <h3 {...stylex.props(styles.formHeading)}>Delivery address</h3>
+                <div {...stylex.props(styles.addressGrid)}>
+                  {addressFields.map((field) => (
+                    <label key={field.key} {...stylex.props(styles.field)}>
+                      <span>{field.label}</span>
+                      <input
+                        {...stylex.props(styles.input)}
+                        name={field.key}
+                        type={field.type ?? "text"}
+                        autoComplete={field.autoComplete}
+                        value={address[field.key]}
+                        required={field.required}
+                        pattern={field.key === "country" ? "[A-Za-z]{2}" : undefined}
+                        maxLength={field.key === "country" ? 2 : undefined}
+                        onChange={(event) => {
+                          setAddress((previous) => ({
+                            ...previous,
+                            [field.key]:
+                              field.key === "country"
+                                ? event.target.value.toUpperCase()
+                                : event.target.value,
+                          }));
+                          invalidateQuote();
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <button
+                  {...stylex.props(styles.primaryButton)}
+                  type="submit"
+                  disabled={pending !== null}
+                >
+                  {pending === "shipping"
+                    ? "Getting shipping rates…"
+                    : quote
+                      ? "Update shipping rates"
+                      : "Get shipping rates"}
+                </button>
+              </form>
+              {quote && quote.options.length > 0 && (
+                <div {...stylex.props(styles.shippingSection)}>
+                  <h3 {...stylex.props(styles.formHeading)}>Shipping method</h3>
+                  {quote.options.map((option) => (
+                    <label key={option.method} {...stylex.props(styles.shippingChoice)}>
+                      <input
+                        type="radio"
+                        name="shippingMethod"
+                        checked={shippingMethod === option.method}
+                        onChange={() => setShippingMethod(option.method)}
+                      />
+                      <span>{option.label}</span>
+                      <strong>{money(option.price, quote.currency)}</strong>
+                    </label>
+                  ))}
+                  <p {...stylex.props(styles.totalRow)}>
+                    <span>Items</span>
+                    <strong>{money(quote.subtotal, quote.currency)}</strong>
+                  </p>
+                  <p {...stylex.props(styles.totalRow)}>
+                    <span>Shipping</span>
+                    <strong>
+                      {selectedShipping
+                        ? money(selectedShipping.price, quote.currency)
+                        : "Select a method"}
+                    </strong>
+                  </p>
+                  <p {...stylex.props(styles.totalRow, styles.grandTotal)}>
+                    <span>Estimated total before tax ({quote.currency})</span>
+                    <strong>
+                      {selectedShipping
+                        ? money(quote.subtotal + selectedShipping.price, quote.currency)
+                        : "—"}
+                    </strong>
+                  </p>
+                  <p {...stylex.props(styles.muted)}>
+                    Any applicable tax is calculated and shown at secure payment before you pay.
+                  </p>
+                </div>
+              )}
+              {error && (
+                <p {...stylex.props(styles.error)} role="alert">
+                  {error}
+                </p>
+              )}
               <button
                 {...stylex.props(styles.primaryButton)}
-                type="submit"
-                disabled={pending !== null}
+                type="button"
+                disabled={!quote || shippingMethod === null || pending !== null}
+                onClick={startCheckout}
               >
-                {pending === "shipping"
-                  ? "Getting shipping rates…"
-                  : quote
-                    ? "Update shipping rates"
-                    : "Get shipping rates"}
+                {pending === "checkout" ? "Opening secure payment…" : "Continue to secure payment"}
               </button>
-            </form>
-            {quote && quote.options.length > 0 && (
-              <div {...stylex.props(styles.shippingSection)}>
-                <h3 {...stylex.props(styles.formHeading)}>Shipping method</h3>
-                {quote.options.map((option) => (
-                  <label key={option.method} {...stylex.props(styles.shippingChoice)}>
-                    <input
-                      type="radio"
-                      name="shippingMethod"
-                      checked={shippingMethod === option.method}
-                      onChange={() => setShippingMethod(option.method)}
-                    />
-                    <span>{option.label}</span>
-                    <strong>{money(option.price, quote.currency)}</strong>
-                  </label>
-                ))}
-                <p {...stylex.props(styles.totalRow)}>
-                  <span>Items</span>
-                  <strong>{money(quote.subtotal, quote.currency)}</strong>
-                </p>
-                <p {...stylex.props(styles.totalRow)}>
-                  <span>Shipping</span>
-                  <strong>
-                    {selectedShipping
-                      ? money(selectedShipping.price, quote.currency)
-                      : "Select a method"}
-                  </strong>
-                </p>
-                <p {...stylex.props(styles.totalRow, styles.grandTotal)}>
-                  <span>Estimated total before tax (USD)</span>
-                  <strong>
-                    {selectedShipping
-                      ? money(quote.subtotal + selectedShipping.price, quote.currency)
-                      : "—"}
-                  </strong>
-                </p>
+              {!quote && (
                 <p {...stylex.props(styles.muted)}>
-                  Any applicable tax is calculated and shown at secure payment before you pay.
+                  Checkout is disabled until shipping rates are available. If the service is
+                  unavailable, please try again later; no payment or order is placed.
                 </p>
-              </div>
-            )}
-            {error && (
-              <p {...stylex.props(styles.error)} role="alert">
-                {error}
-              </p>
-            )}
-            <button
-              {...stylex.props(styles.primaryButton)}
-              type="button"
-              disabled={!quote || shippingMethod === null || pending !== null}
-              onClick={startCheckout}
-            >
-              {pending === "checkout" ? "Opening secure payment…" : "Continue to secure payment"}
-            </button>
-            {!quote && (
-              <p {...stylex.props(styles.muted)}>
-                Checkout is disabled until shipping rates are available. If the service is
-                unavailable, please try again later; no payment or order is placed.
-              </p>
-            )}
-          </>
-        )}
-      </section>
+              )}
+            </>
+          )}
+        </section>
+      )}
     </>
   );
 }

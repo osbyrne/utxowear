@@ -6,6 +6,7 @@ declare namespace Cloudflare {
     PRINTIFY_SHOP_ID?: string;
     PRINTIFY_STORE_URL?: string;
     PRINTIFY_CURRENCY?: string;
+    PRINTIFY_USD_TO_EUR_RATE?: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
     CHECKOUT_ORIGIN?: string;

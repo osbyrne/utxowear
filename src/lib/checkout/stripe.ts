@@ -2,6 +2,7 @@ import {
   CheckoutError,
   type Address,
   type CartItem,
+  type Currency,
   type Quote,
   type ShippingOption,
   validateAddress,
@@ -11,6 +12,7 @@ import {
 
 export type CheckoutSnapshot = {
   shopId: string;
+  currency: Currency;
   items: CartItem[];
   address: Address;
   shippingMethod: number;
@@ -39,16 +41,25 @@ export function checkoutSnapshot(session: StripeSession): CheckoutSnapshot {
     session.mode !== "payment" ||
     session.status !== "complete" ||
     session.payment_status !== "paid" ||
-    session.currency !== "usd" ||
+    (session.currency !== "usd" && session.currency !== "eur") ||
     !validateAmount(session.amount_total) ||
     !session.metadata ||
     typeof session.metadata !== "object"
   ) {
-    throw new CheckoutError("Stripe session is not a completed USD payment.", 400);
+    throw new CheckoutError("Stripe session is not a completed supported payment.", 400);
   }
   const metadata = session.metadata as Record<string, unknown>;
+  // Version 2 was USD-only and did not carry currency. Never reinterpret an old
+  // snapshot using the current store configuration, which may now be EUR.
+  const currency =
+    metadata.checkout_version === "2" && metadata.currency === undefined
+      ? "USD"
+      : metadata.checkout_version === "3"
+        ? metadata.currency
+        : undefined;
+  if ((currency !== "USD" && currency !== "EUR") || session.currency !== currency.toLowerCase())
+    throw new CheckoutError("Stripe currency does not match its checkout snapshot.", 400);
   if (
-    metadata.checkout_version !== "2" ||
     typeof metadata.shop !== "string" ||
     !/^\d+$/.test(metadata.shop) ||
     typeof metadata.cart !== "string" ||
@@ -110,7 +121,7 @@ export function checkoutSnapshot(session: StripeSession): CheckoutSnapshot {
   ) {
     throw new CheckoutError("Stripe payment does not match its checkout snapshot.", 400);
   }
-  return { shopId: metadata.shop, items, address, shippingMethod: method, total };
+  return { shopId: metadata.shop, currency, items, address, shippingMethod: method, total };
 }
 
 export async function createStripeSession(
@@ -119,6 +130,14 @@ export async function createStripeSession(
   quote: Quote,
   option: ShippingOption,
 ): Promise<string> {
+  if (
+    (quote.currency !== "USD" && quote.currency !== "EUR") ||
+    quote.items.some((item) => item.currency !== quote.currency || !validateAmount(item.price)) ||
+    option.currency !== quote.currency ||
+    !validateAmount(option.price) ||
+    quote.items.reduce((sum, item) => sum + item.price * item.quantity, 0) !== quote.subtotal
+  )
+    throw new CheckoutError("Checkout prices must match the quoted currency and subtotal.", 503);
   const total = quote.subtotal + option.price;
   if (!validateAmount(total) || total === 0) throw new CheckoutError("Cart total is too large.");
   // Metadata has a 500-character limit per value. Keep cart compact, store address in separate fields.
@@ -146,12 +165,12 @@ export async function createStripeSession(
   }
   const params = new URLSearchParams({
     mode: "payment",
-    "payment_method_types[0]": "card",
     customer: customerResult.id,
     "automatic_tax[enabled]": "true",
     success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/?checkout=cancel`,
-    "metadata[checkout_version]": "2",
+    "metadata[checkout_version]": "3",
+    "metadata[currency]": quote.currency,
     "metadata[customer]": customerResult.id,
     "metadata[shop]": quote.shopId,
     "metadata[cart]": cart,
@@ -162,7 +181,7 @@ export async function createStripeSession(
   for (const [field, value] of Object.entries(quote.address))
     params.set(`metadata[a_${field}]`, value);
   quote.items.forEach((item, index) => {
-    params.set(`line_items[${index}][price_data][currency]`, "usd");
+    params.set(`line_items[${index}][price_data][currency]`, quote.currency.toLowerCase());
     params.set(`line_items[${index}][price_data][unit_amount]`, String(item.price));
     params.set(`line_items[${index}][price_data][tax_behavior]`, "exclusive");
     params.set(
@@ -172,7 +191,7 @@ export async function createStripeSession(
     params.set(`line_items[${index}][quantity]`, String(item.quantity));
   });
   const shippingIndex = quote.items.length;
-  params.set(`line_items[${shippingIndex}][price_data][currency]`, "usd");
+  params.set(`line_items[${shippingIndex}][price_data][currency]`, quote.currency.toLowerCase());
   params.set(`line_items[${shippingIndex}][price_data][unit_amount]`, String(option.price));
   params.set(`line_items[${shippingIndex}][price_data][tax_behavior]`, "exclusive");
   params.set(`line_items[${shippingIndex}][price_data][product_data][tax_code]`, "txcd_92010001");
@@ -185,6 +204,7 @@ export async function createStripeSession(
   if (
     typeof session.id !== "string" ||
     !session.id.startsWith("cs_") ||
+    session.currency !== quote.currency.toLowerCase() ||
     typeof session.url !== "string" ||
     (session.automatic_tax as { enabled?: unknown } | null)?.enabled !== true ||
     (session.automatic_tax as { status?: unknown } | null)?.status === "failed"

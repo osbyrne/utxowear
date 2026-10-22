@@ -13,8 +13,33 @@ This application runs as an Astro server on **Cloudflare Workers**, with a D1
 database used to prevent duplicate fulfillment on Stripe webhook retries. It
 cannot be deployed as a static-only site. The Printify API must grant access to
 the shop that owns the listed products; use a shop supporting API order creation.
-The checkout accepts USD prices and shipping quotes; use
-`PRINTIFY_CURRENCY=USD`. Shipping options are calculated by Printify for the
+The store uses `PRINTIFY_CURRENCY=USD`: product prices, shipping quotes, and
+Stripe payments are all in US dollars, using Printify USD retail prices as the
+source of truth. Buyers paying with a card in another currency have conversion
+handled by their card issuer, which may apply exchange fees. No exchange-rate
+configuration is needed for USD checkout.
+
+Optional EUR support remains available through `PRINTIFY_CURRENCY=EUR`.
+For EUR, set `PRINTIFY_USD_TO_EUR_RATE` to a merchant-approved rate in **EUR per
+1 USD** (positive decimal, at most six decimal places). The server converts both
+product unit prices and shipping, rounding each once to integer cents, half up.
+Maintain this rate as exchange rates and fulfillment costs change; this is a
+merchant pricing policy, not a live FX service or Printify billing conversion.
+No rate is assumed. Until a valid rate is set, the catalog shows the actual USD
+source prices with purchase controls unavailable, and EUR quotes fail closed.
+Changing `PRINTIFY_CURRENCY` alone never converts or relabels source amounts.
+
+Printify's [API shipping calculation](https://developers.printify.com/#calculate-the-shipping-cost-of-an-order)
+returns unlabelled amounts, and its [currency guidance](https://help.printify.com/hc/en-us/articles/4483625794577-In-which-currency-can-I-sell-my-products)
+identifies shipping rates and Pop-Up transactions as USD. Its
+[retail pricing guidance](https://help.printify.com/hc/en-us/articles/12203816692113-How-does-publishing-work-if-I-ve-changed-my-billing-currency-in-Printify)
+also explains that other sales channels can assign their own currency to numeric
+retail prices. Do not use this USD conversion policy for a shop whose retail
+numbers already represent another currency. Printify Pop-Up's own hosted checkout
+remains USD-only; EUR payments here use this site's Stripe checkout. API order
+creation support for the chosen shop must still be confirmed before release.
+
+Shipping options are calculated by Printify for the
 chosen products and address. Checkout charges the merchandise price and the
 selected shipping charge; tax is calculated in Stripe Checkout when Stripe Tax
 is configured for the merchant's registered jurisdictions. Configure your
@@ -23,23 +48,34 @@ before accepting live payments.
 
 ### Local setup
 
-1. Run `bun install`. Copy `.dev.vars.example` to `.dev.vars` and supply
+1. Run `bun install`. Copy `.env.example` to `.env` and supply
    `PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and
    `CHECKOUT_ORIGIN=http://localhost:4321`. Set `PRINTIFY_SHOP_ID` to the
    Printify shop whose products are listed (especially if you have multiple
-   shops). Never commit `.dev.vars`.
+   shops). Never commit `.env`. Do not keep a `.dev.vars` file alongside `.env`: Wrangler
+   gives `.dev.vars` precedence and ignores `.env` entirely.
 2. Run `bun run migrate:local`, then `bun dev`. Wrangler provides local D1
-   and Worker secrets from `.dev.vars`. Only products returned by the
+   and Worker secrets from `.env`. Only products returned by the
    authenticated Printify API can be purchased.
-3. In a separate terminal, forward Stripe test webhooks for
-   `checkout.session.completed` to `http://localhost:4321/api/stripe-webhook`.
-   Use the signing secret printed by the Stripe CLI as
-   `STRIPE_WEBHOOK_SECRET` in `.dev.vars`; restart `bun dev`.
+3. Authenticate with `bunx @stripe/cli login`, then run `bun run stripe:listen`
+   in a separate terminal. This forwards sandbox checkout completion events to
+   `http://localhost:4321/api/stripe-webhook`. Use the listener's signing secret
+   as `STRIPE_WEBHOOK_SECRET` in `.env`; restart `bun dev`. CLI login
+   authenticates the CLI separately from this application: the server still
+   needs a sandbox API key from the Stripe Dashboard as `STRIPE_SECRET_KEY`.
+   The listener defaults to sandbox mode. For live payments, use a live-mode
+   webhook endpoint and its own signing secret; a sandbox listener secret does
+   not configure delivery of live payment events.
 4. Test a complete payment with Stripe test credentials and a valid Printify
    test shop before accepting real money. Printify has no sandbox order API:
    a successful paid test checkout can create an actual fulfillment order.
    Set Printify order approval to **Manual** while testing and reconcile orders
    in the Printify dashboard before release.
+
+Local sandbox payment, webhook, duplicate-delivery, and Printify order creation
+were verified on 22 October 2026; the test order was canceled without production.
+See [checkout end-to-end verification](docs/checkout-e2e.md) for evidence and limits.
+Stripe Checkout uses dashboard-managed dynamic payment methods.
 
 ### Deployment
 
@@ -49,7 +85,8 @@ record the generated database ID in `wrangler.jsonc` and apply
 `bun run migrate:remote` before taking payments. Set secrets with
 `bunx wrangler secret put PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET`, and `CHECKOUT_ORIGIN`, and set
-`PRINTIFY_SHOP_ID` and `PRINTIFY_CURRENCY=USD` for this Worker. Register
+`PRINTIFY_SHOP_ID`, `PRINTIFY_CURRENCY`, and (for EUR) `PRINTIFY_USD_TO_EUR_RATE`
+for this Worker. Register
 `https://YOUR-DOMAIN/api/stripe-webhook` in Stripe with the
 `checkout.session.completed` event; its signing secret must match the deployed
 `STRIPE_WEBHOOK_SECRET`. Configure `CHECKOUT_ORIGIN` as the exact public HTTPS
@@ -59,6 +96,12 @@ Failed or uncertain fulfillment attempts require manual reconciliation against
 the Stripe Session ID (Printify external order ID). Do not retry an ambiguous
 submission blindly; it could create two orders. Successful checkout redirect is
 not a fulfillment confirmation: the webhook is authoritative.
+
+The server re-fetches prices at checkout and rejects a currency or total that no
+longer matches the displayed quote. Stripe line items and version 3 checkout
+metadata carry the server currency; signed webhooks must match that currency,
+subtotal, shipping, tax, and paid total. Existing version 2 USD sessions remain
+valid independently of the current store currency.
 
 Printify Express can split one cart into express and ordinary fulfillment orders;
 its production scheduling is controlled by Printify. Confirm shop approval and

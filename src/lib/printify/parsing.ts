@@ -130,7 +130,7 @@ export function plainText(value = ""): string {
 
 export function normalizePublicProduct(
   product: PublicStoreProduct,
-  config: PrintifyConfig,
+  _config: PrintifyConfig,
 ): StoreProduct | undefined {
   if (!product.image) return undefined;
 
@@ -139,7 +139,7 @@ export function normalizePublicProduct(
     title: product.title,
     description: plainText(product.description),
     price: product.defaultVariant?.retailPrice ?? 0,
-    currency: config.currency,
+    currency: "USD",
     variants: [],
     defaultVariantId: null,
     mockups: [product.image],
@@ -154,7 +154,7 @@ function imageOrder(image: PrintifyProduct["images"][number]): number {
 
 export function normalizeApiProduct(
   product: PrintifyProduct,
-  config: PrintifyConfig,
+  _config: PrintifyConfig,
 ): StoreProduct | undefined {
   const enabledVariants = product.variants.filter(
     (variant) => variant.is_enabled && variant.is_available !== false && variant.price > 0,
@@ -176,7 +176,7 @@ export function normalizeApiProduct(
     title: product.title,
     description: plainText(product.description),
     price: selected.price,
-    currency: config.currency,
+    currency: "USD",
     mockups: images.map((image) => image.src),
     variants: enabledVariants.map((variant) => ({
       id: variant.id,

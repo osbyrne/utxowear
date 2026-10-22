@@ -607,7 +607,7 @@ const styles = stylex.create({
     width: "100%",
     height: "clamp(28rem, 68vh, 46rem)",
     overflow: "hidden",
-    borderRadius: "1.5rem",
+    borderRadius: 0,
   },
   canvas: { cursor: "grab", touchAction: "none" },
 });

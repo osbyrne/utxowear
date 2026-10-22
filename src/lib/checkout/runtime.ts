@@ -5,6 +5,7 @@ export type CheckoutBindings = {
   PRINTIFY_API_TOKEN?: string;
   PRINTIFY_SHOP_ID?: string;
   PRINTIFY_CURRENCY?: string;
+  PRINTIFY_USD_TO_EUR_RATE?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   CHECKOUT_ORIGIN?: string;
@@ -29,6 +30,7 @@ export function requireCheckoutConfig(
   token: string;
   shopId?: string;
   currency?: string;
+  usdToEurRate?: string;
   stripeKey: string;
   origin: string;
   db: CheckoutDatabase;
@@ -65,6 +67,7 @@ export function requireCheckoutConfig(
     token: bindings.PRINTIFY_API_TOKEN,
     shopId: bindings.PRINTIFY_SHOP_ID,
     currency: bindings.PRINTIFY_CURRENCY,
+    usdToEurRate: bindings.PRINTIFY_USD_TO_EUR_RATE,
     stripeKey: bindings.STRIPE_SECRET_KEY,
     origin: configured.origin,
     db: bindings.CHECKOUT_DB,

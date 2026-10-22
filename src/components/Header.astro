@@ -6,13 +6,13 @@ import { styles } from '../styles/storefront.stylex';
 <header {...stylex.attrs(styles.header)}>
   <div {...stylex.attrs(styles.navbar)}>
     <div {...stylex.attrs(styles.brandArea)}>
-      <a href="/" {...stylex.attrs(styles.brand)} aria-label="UTXOWEAR home">
-        UTXOWEAR
+      <a href="/" {...stylex.attrs(styles.brand)} aria-label="utxowear home">
+        utxowear
       </a>
     </div>
 
     <div {...stylex.attrs(styles.actions)}>
-      <a href="#shop" {...stylex.attrs(styles.button, styles.search)} aria-label="Browse products">
+      <a href="/products" {...stylex.attrs(styles.button)} aria-label="Browse products">
         Shop
       </a>
       <a href="#cart" data-cart-link {...stylex.attrs(styles.button, styles.bag)} aria-label="View shopping cart">

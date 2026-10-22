@@ -1,0 +1,22 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+import Storefront from '../layouts/Storefront.astro';
+import ProductList from '../components/ProductList.astro';
+import { getPrintifyProducts } from '../lib/printify';
+import { env } from 'cloudflare:workers';
+
+const products = await getPrintifyProducts(env);
+---
+
+<Storefront title="Products — utxowear">
+  <main {...stylex.attrs(styles.main)}>
+    <section aria-labelledby="products-title">
+      <div {...stylex.attrs(styles.catalogHeading)}>
+        <a href="/" {...stylex.attrs(styles.productLink)}>← Back to the shirt</a>
+        <h1 id="products-title" {...stylex.attrs(styles.pageHeading)}>All products</h1>
+      </div>
+      <ProductList products={products} catalog />
+    </section>
+  </main>
+</Storefront>

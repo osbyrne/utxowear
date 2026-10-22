@@ -6,5 +6,6 @@ export const theme = stylex.defineVars({
   border: "oklch(86% 0 0)",
   content: "oklch(22.389% 0.031 278.072)",
   muted: "oklch(22.389% 0.031 278.072 / 60%)",
-  serif: '"Instrument Serif", Georgia, serif',
+  serif: '"Computer Modern Serif", serif',
+  brandFont: '"Instrument Serif", Georgia, serif',
 });

@@ -1,0 +1,38 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../app.css';
+
+type Props = { title?: string };
+const { title = 'utxowear' } = Astro.props;
+---
+
+<html lang="en">
+  <head>
+    <!-- Establish reset precedence before development StyleX CSS loads. -->
+    <style is:inline>@layer reset;</style>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/png" sizes="200x200" href="/icons/light-mode-transparent.png" />
+    <link rel="icon" type="image/png" sizes="200x200" href="/icons/dark-mode-transparent.png" media="(prefers-color-scheme: dark)" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    {import.meta.env.DEV && <link rel="stylesheet" href="/virtual:stylex.css" />}
+    <script>
+      if (import.meta.env.DEV) {
+        import('virtual:stylex:css-only');
+      }
+    </script>
+  </head>
+  <body {...stylex.attrs(styles.body)}>
+    <div {...stylex.attrs(styles.shell)}>
+      <Header />
+
+      <slot />
+
+      <Footer />
+    </div>
+  </body>
+</html>

@@ -8,6 +8,7 @@ import {
 import { makeCatalog } from "./printify/catalog";
 import { FetchLive } from "./printify/client";
 import type { StoreProduct } from "./printify/model";
+import { priceCatalog } from "./pricing";
 
 export type { StoreProduct } from "./printify/model";
 
@@ -16,6 +17,7 @@ export type PrintifyEnvironment = Readonly<{
   readonly PRINTIFY_SHOP_ID?: string;
   readonly PRINTIFY_STORE_URL?: string;
   readonly PRINTIFY_CURRENCY?: string;
+  readonly PRINTIFY_USD_TO_EUR_RATE?: string;
 }>;
 
 export function configFromEnvironment(environment: PrintifyEnvironment): ConfigResult {
@@ -35,9 +37,14 @@ let catalogLoad: Promise<StoreProduct[]> | undefined;
 const CATALOG_TTL_MS = 5 * 60_000;
 
 export function getPrintifyProducts(environment: PrintifyEnvironment): Promise<StoreProduct[]> {
+  const price = (products: StoreProduct[]) =>
+    priceCatalog(products, {
+      currency: environment.PRINTIFY_CURRENCY,
+      usdToEurRate: environment.PRINTIFY_USD_TO_EUR_RATE,
+    });
   if (catalogCache && Date.now() < catalogCache.expiresAt)
-    return Promise.resolve(catalogCache.products);
-  if (catalogLoad) return catalogLoad;
+    return Promise.resolve(price(catalogCache.products));
+  if (catalogLoad) return catalogLoad.then(price);
 
   catalogLoad = (async () => {
     const { config, warnings } = configFromEnvironment(environment);
@@ -48,5 +55,5 @@ export function getPrintifyProducts(environment: PrintifyEnvironment): Promise<S
   })().finally(() => {
     catalogLoad = undefined;
   });
-  return catalogLoad;
+  return catalogLoad.then(price);
 }

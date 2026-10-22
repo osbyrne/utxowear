@@ -4,9 +4,10 @@ import type { StoreProduct } from '../lib/printify';
 
 type Props = {
   products: StoreProduct[];
+  catalog?: boolean;
 };
 
-const { products } = Astro.props;
+const { products, catalog = false } = Astro.props;
 ---
 
-<Checkout products={products} client:load />
+<Checkout products={products} catalog={catalog} client:load />

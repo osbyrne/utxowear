@@ -8,6 +8,7 @@ export class CheckoutError extends Error {
 }
 
 export type CartItem = { productId: string; variantId: number; quantity: number };
+export type Currency = "USD" | "EUR";
 export type Address = {
   first_name: string;
   last_name: string;
@@ -20,11 +21,23 @@ export type Address = {
   city: string;
   zip: string;
 };
-export type CheckoutInput = { items: CartItem[]; address: Address; shippingMethod?: number };
-export type PricedItem = CartItem & { price: number; title: string; variantTitle: string };
-export type ShippingOption = { method: number; label: string; price: number };
+export type CheckoutInput = {
+  items: CartItem[];
+  address: Address;
+  currency: Currency;
+  shippingMethod?: number;
+  expectedTotal?: number;
+};
+export type PricedItem = CartItem & {
+  price: number;
+  currency: Currency;
+  title: string;
+  variantTitle: string;
+};
+export type ShippingOption = { method: number; label: string; price: number; currency: Currency };
 export type Quote = {
   shopId: string;
+  currency: Currency;
   items: PricedItem[];
   address: Address;
   options: ShippingOption[];
@@ -131,13 +144,23 @@ export async function parseCheckoutRequest(
   if (!object(payload)) throw new CheckoutError("Invalid checkout request.");
   const items = validateItems(payload.items);
   const address = validateAddress(payload.address);
+  if (payload.currency !== "USD" && payload.currency !== "EUR")
+    throw new CheckoutError("Select a supported checkout currency.");
   if (withShippingMethod && ![1, 2, 3, 4].includes(payload.shippingMethod as number)) {
     throw new CheckoutError("Select a valid shipping method.");
   }
+  if (withShippingMethod && !validateAmount(payload.expectedTotal))
+    throw new CheckoutError("A quoted checkout total is required.");
   return {
     items,
     address,
-    ...(withShippingMethod ? { shippingMethod: payload.shippingMethod as number } : {}),
+    currency: payload.currency,
+    ...(withShippingMethod
+      ? {
+          shippingMethod: payload.shippingMethod as number,
+          expectedTotal: payload.expectedTotal as number,
+        }
+      : {}),
   };
 }
 

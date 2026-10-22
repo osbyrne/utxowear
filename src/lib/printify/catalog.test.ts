@@ -102,7 +102,7 @@ describe("catalog source precedence and fallbacks", () => {
         title: "Public shirt",
         description: "Public",
         price: 6400,
-        currency: "EUR",
+        currency: "USD",
         mockups: ["https://cdn.example/public.png"],
         variants: [],
         defaultVariantId: null,

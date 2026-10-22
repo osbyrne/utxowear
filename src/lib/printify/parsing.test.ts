@@ -142,7 +142,7 @@ describe("product normalization", () => {
       title: "Public shirt",
       description: "Heavy cotton",
       price: 6400,
-      currency: "EUR",
+      currency: "USD",
       mockups: ["https://cdn.example/public.png"],
       variants: [],
       defaultVariantId: null,
@@ -161,7 +161,7 @@ describe("product normalization", () => {
         title: "API shirt",
         description: "Heavy cotton",
         price: 6800,
-        currency: "EUR",
+        currency: "USD",
         mockups: ["default.png", "front.png", "back.png"],
         defaultVariantId: 102,
         variants: [

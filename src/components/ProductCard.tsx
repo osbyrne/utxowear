@@ -29,7 +29,7 @@ export default function ProductCard({
     Boolean(variant);
 
   return (
-    <article {...stylex.props(styles.card)}>
+    <article id={`product-${product.id}`} {...stylex.props(styles.card)}>
       <figure {...stylex.props(styles.figure)}>
         <img
           {...stylex.props(styles.image)}

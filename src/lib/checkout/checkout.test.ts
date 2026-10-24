@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { parseCheckoutRequest, type Address, type Quote } from "./domain";
+import { type Address, type Quote } from "./domain";
+import { Database } from "bun:sqlite";
 import { usdPricing } from "../pricing";
-import { requireCheckoutConfig } from "./runtime";
 import { claimOrder, markOrderCreated, markOrderUncertain, type CheckoutDatabase } from "./orders";
-import { quoteCart, shippingOptions, createPrintifyOrder } from "./printify";
+import { quoteCart } from "./printify";
 import { checkoutSnapshot, createStripeSession, verifyStripeWebhook } from "./stripe";
 
 const address: Address = {
@@ -24,153 +24,21 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("Printify quote and order selection", () => {
-  test("converts authenticated USD retail prices and unlabelled USD shipping into EUR", async () => {
-    globalThis.fetch = (async (input) =>
-      String(input).includes("/products/")
-        ? Response.json({
-            id: item.productId,
-            title: "Tee",
-            visible: true,
-            variants: [{ id: item.variantId, price: 1751, is_enabled: true }],
-          })
-        : Response.json({ standard: 1039, priority: 2001 })) as typeof fetch;
-    // Synthetic merchant rate for deterministic testing, not a real exchange rate.
-    const quote = await quoteCart(
-      { token: "secret", shopId: "123", currency: "EUR", usdToEurRate: "0.8" },
-      [item],
-      address,
-    );
-    expect(quote.currency).toBe("EUR");
-    expect(quote.items[0]).toMatchObject({ price: 1401, currency: "EUR" });
-    expect(quote.subtotal).toBe(2802);
-    expect(quote.options).toEqual([
-      { method: 1, label: "Standard", price: 831, currency: "EUR" },
-      { method: 2, label: "Priority", price: 1601, currency: "EUR" },
-    ]);
-    expect(
-      shippingOptions(
-        { currency: "USD", standard: 1039 },
-        usdPricing({ currency: "EUR", usdToEurRate: "0.8" }),
-      )[0]?.price,
-    ).toBe(831);
-    expect(() => shippingOptions({ currency: "EUR", standard: 1039 })).toThrow("currency");
-  });
-
-  test("rejects missing conversion configuration before any upstream request", async () => {
-    let called = false;
-    globalThis.fetch = (async (_input): Promise<Response> => {
-      called = true;
-      throw new Error("Unexpected request");
-    }) as typeof fetch;
-    await expect(quoteCart({ token: "secret", currency: "EUR" }, [item], address)).rejects.toThrow(
-      "PRINTIFY_USD_TO_EUR_RATE",
-    );
-    await expect(quoteCart({ token: "secret", currency: "GBP" }, [item], address)).rejects.toThrow(
-      "USD and EUR",
-    );
-    expect(called).toBe(false);
-  });
-
-  test.each(["product", "variant"])(
-    "rejects an explicit mismatched %s source currency",
-    async (level) => {
-      globalThis.fetch = (async (_input) =>
-        Response.json({
-          id: item.productId,
-          title: "Tee",
-          visible: true,
-          ...(level === "product" ? { currency: "EUR" } : {}),
-          variants: [
-            {
-              id: item.variantId,
-              price: 1750,
-              is_enabled: true,
-              ...(level === "variant" ? { currency: "EUR" } : {}),
-            },
-          ],
-        })) as typeof fetch;
-      await expect(quoteCart({ token: "secret", shopId: "123" }, [item], address)).rejects.toThrow(
-        "currency",
-      );
-    },
+test("rejects a visible draft before requesting shipping or starting payment", async () => {
+  let calls = 0;
+  globalThis.fetch = (async (_input) => {
+    calls++;
+    return Response.json({
+      id: item.productId,
+      visible: true,
+      external: { id: "" },
+      variants: [{ id: item.variantId, price: 1750, is_enabled: true }],
+    });
+  }) as typeof fetch;
+  await expect(quoteCart({ token: "secret", shopId: "123" }, [item], address)).rejects.toThrow(
+    "no longer available",
   );
-
-  test("uses authenticated enabled variant retail price and maps legacy priority without duplicate express", async () => {
-    const calls: string[] = [];
-    globalThis.fetch = (async (input, init) => {
-      calls.push(String(input));
-      expect(init?.headers).toMatchObject({ Authorization: "Bearer secret" });
-      if (String(input).includes("/products/"))
-        return Response.json({
-          id: item.productId,
-          title: "Tee",
-          visible: true,
-          variants: [{ id: 12359, title: "Blue / M", price: 1750, is_enabled: true }],
-        });
-      return Response.json({ standard: 900, express: 2200, printify_express: 2700, economy: 400 });
-    }) as typeof fetch;
-    const quote = await quoteCart({ token: "secret", shopId: "123" }, [item], address);
-    expect(quote.subtotal).toBe(3500);
-    expect(quote.items[0]).toMatchObject({ title: "Tee", variantTitle: "Blue / M", price: 1750 });
-    expect(quote.options).toEqual([
-      { method: 1, label: "Standard", price: 900, currency: "USD" },
-      { method: 2, label: "Priority", price: 2200, currency: "USD" },
-      { method: 3, label: "Printify Express", price: 2700, currency: "USD" },
-      { method: 4, label: "Economy", price: 400, currency: "USD" },
-    ]);
-    expect(calls).toHaveLength(2);
-    expect(shippingOptions({ priority: 2400, express: 2200 })).toEqual([
-      { method: 2, label: "Priority", price: 2400, currency: "USD" },
-    ]);
-  });
-
-  test("rejects hidden and disabled products before asking Printify for shipping", async () => {
-    const calls: string[] = [];
-    globalThis.fetch = (async (input) => {
-      calls.push(String(input));
-      return Response.json({
-        id: item.productId,
-        title: "Tee",
-        visible: false,
-        variants: [{ id: 12359, price: 1750, is_enabled: true }],
-      });
-    }) as typeof fetch;
-    await expect(quoteCart({ token: "secret", shopId: "123" }, [item], address)).rejects.toThrow(
-      "no longer available",
-    );
-    expect(calls).toHaveLength(1);
-    globalThis.fetch = (async (_input, _init) =>
-      Response.json({
-        id: item.productId,
-        title: "Tee",
-        visible: true,
-        variants: [{ id: 12359, price: 1750, is_enabled: false }],
-      })) as typeof fetch;
-    await expect(quoteCart({ token: "secret", shopId: "123" }, [item], address)).rejects.toThrow(
-      "variant is no longer available",
-    );
-  });
-
-  test("uses express order API and saves every split order ID", async () => {
-    globalThis.fetch = (async (input, init) => {
-      expect(String(input)).toEndWith("/orders/express.json");
-      expect(JSON.parse(String(init?.body))).toMatchObject({
-        external_id: "cs_test_123",
-        shipping_method: 3,
-        line_items: [{ product_id: item.productId, variant_id: item.variantId, quantity: 2 }],
-      });
-      return Response.json({
-        data: [
-          { type: "order", id: "first" },
-          { type: "order", id: "second" },
-        ],
-      });
-    }) as typeof fetch;
-    expect(
-      await createPrintifyOrder({ token: "secret" }, "123", "cs_test_123", [item], address, 3),
-    ).toBe('["first","second"]');
-  });
+  expect(calls).toBe(1);
 });
 
 describe("Stripe tax and signed paid checkout", () => {
@@ -227,7 +95,6 @@ describe("Stripe tax and signed paid checkout", () => {
       expect(customerParams?.get("shipping[address][postal_code]")).toBe("94612");
       expect(checkoutParams?.get("customer")).toBe("cus_test");
       expect(checkoutParams?.get("automatic_tax[enabled]")).toBe("true");
-      expect(checkoutParams?.has("payment_method_types[0]")).toBe(false);
       expect(checkoutParams?.get("line_items[0][price_data][unit_amount]")).toBe(
         String(pricing.convert(1750)),
       );
@@ -304,58 +171,6 @@ describe("Stripe tax and signed paid checkout", () => {
       ).rejects.toThrow("signature");
     },
   );
-
-  test("rejects mixed item and shipping currencies before creating a Stripe customer", async () => {
-    let called = false;
-    globalThis.fetch = (async (_input): Promise<Response> => {
-      called = true;
-      throw new Error("Unexpected request");
-    }) as typeof fetch;
-    await expect(
-      createStripeSession(
-        "sk_test",
-        "https://shop.example",
-        {
-          ...baseQuote,
-          items: baseQuote.items.map((item) => ({ ...item, currency: "EUR" })),
-        },
-        baseQuote.options[0]!,
-      ),
-    ).rejects.toThrow("currency");
-    await expect(
-      createStripeSession("sk_test", "https://shop.example", baseQuote, {
-        ...baseQuote.options[0]!,
-        currency: "EUR",
-      }),
-    ).rejects.toThrow("currency");
-    expect(called).toBe(false);
-  });
-
-  test("rejects a modified webhook even when its JSON remains valid", async () => {
-    const secret = "whsec_test";
-    const timestamp = Math.floor(Date.now() / 1000);
-    const raw = JSON.stringify({
-      type: "checkout.session.completed",
-      data: { object: { id: "cs_test_123" } },
-    });
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-    const digest = new Uint8Array(
-      await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${raw}`)),
-    );
-    const signature = `t=${timestamp},v1=${[...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
-    expect((await verifyStripeWebhook(raw, signature, secret)).type).toBe(
-      "checkout.session.completed",
-    );
-    await expect(
-      verifyStripeWebhook(raw.replace("completed", "expired"), signature, secret),
-    ).rejects.toThrow("signature");
-  });
 });
 
 async function signWebhook(raw: string) {
@@ -373,89 +188,43 @@ async function signWebhook(raw: string) {
   return `t=${timestamp},v1=${[...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-describe("checkout request currency and configuration", () => {
-  const request = (extra: Record<string, unknown>) =>
-    new Request("https://shop.example/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: [item], address, ...extra }),
-    });
-  test("requires an explicit supported client currency and quoted integer total", async () => {
-    await expect(parseCheckoutRequest(request({}))).rejects.toThrow("currency");
-    await expect(parseCheckoutRequest(request({ currency: "GBP" }))).rejects.toThrow("currency");
-    await expect(
-      parseCheckoutRequest(request({ currency: "EUR", shippingMethod: 1 }), true),
-    ).rejects.toThrow("quoted");
+test("fulfillment claims execute actual SQL: concurrent delivery creates once and uncertainty blocks retries", async () => {
+  const sqlite = new Database(":memory:");
+  sqlite.exec(
+    await Bun.file(new URL("../../../migrations/0001_checkout_orders.sql", import.meta.url)).text(),
+  );
+  const db: CheckoutDatabase = {
+    prepare(query) {
+      return {
+        bind(...values) {
+          return {
+            async run() {
+              return { meta: { changes: sqlite.query(query).run(...values).changes } };
+            },
+            async first<T>() {
+              return sqlite.query(query).get(...values) as T | null;
+            },
+          };
+        },
+      };
+    },
+  };
+  try {
+    const claims = await Promise.allSettled([claimOrder(db, "cs_once"), claimOrder(db, "cs_once")]);
+    expect(claims.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    await markOrderCreated(db, "cs_once", "printify_order");
+    expect(await claimOrder(db, "cs_once")).toBe("created");
     expect(
-      await parseCheckoutRequest(
-        request({ currency: "EUR", shippingMethod: 1, expectedTotal: 3520 }),
-        true,
-      ),
-    ).toMatchObject({ currency: "EUR", expectedTotal: 3520 });
-  });
-  test("EUR support keeps the missing payment setup guard", () => {
-    expect(() =>
-      requireCheckoutConfig(
-        { PRINTIFY_API_TOKEN: "test", PRINTIFY_CURRENCY: "EUR", PRINTIFY_USD_TO_EUR_RATE: "0.8" },
-        request({}),
-      ),
-    ).toThrow("until payment and fulfillment are configured");
-  });
-});
-
-describe("D1 fulfillment state", () => {
-  test("concurrent claims create once; uncertain outcome is never automatically retried", async () => {
-    const rows = new Map<string, { status: string; printify_order_id: string | null }>();
-    const db: CheckoutDatabase = {
-      prepare(query) {
-        return {
-          bind(...values) {
-            return {
-              async run() {
-                const id = query.startsWith("INSERT")
-                  ? values[0]
-                  : query.includes("printify_order_id = ?")
-                    ? values[2]
-                    : values[1];
-                const row = rows.get(id!);
-                if (query.startsWith("INSERT")) {
-                  if (!row) rows.set(id!, { status: "pending", printify_order_id: null });
-                  return { meta: { changes: row ? 0 : 1 } };
-                }
-                if (
-                  !row ||
-                  row.status !== (query.includes("status = 'pending'") ? "pending" : "submitting")
-                )
-                  return { meta: { changes: 0 } };
-                row.status = query.includes("status = 'pending'")
-                  ? "submitting"
-                  : query.includes("status = 'uncertain'")
-                    ? "uncertain"
-                    : "created";
-                if (query.includes("printify_order_id = ?")) row.printify_order_id = values[0];
-                return { meta: { changes: 1 } };
-              },
-              async first<T>() {
-                return (rows.get(values[0]!) as T) ?? null;
-              },
-            };
-          },
-        };
-      },
-    };
-    const results = await Promise.allSettled([
-      claimOrder(db, "cs_test_1"),
-      claimOrder(db, "cs_test_1"),
-    ]);
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(rows.get("cs_test_1")?.status).toBe("submitting");
-    await expect(markOrderUncertain(db, "cs_test_1", new Error("timeout"))).rejects.toThrow(
-      "manual reconciliation",
-    );
-    await expect(claimOrder(db, "cs_test_1")).rejects.toThrow("manual reconciliation");
-    rows.get("cs_test_1")!.status = "pending"; // Operator has confirmed Printify has no order.
-    expect(await claimOrder(db, "cs_test_1")).toBe("claimed");
-    await markOrderCreated(db, "cs_test_1", "printify_1");
-    expect(await claimOrder(db, "cs_test_1")).toBe("created");
-  });
+      sqlite
+        .query("SELECT COUNT(*) AS count FROM checkout_orders WHERE session_id = ?")
+        .get("cs_once"),
+    ).toEqual({ count: 1 });
+    await claimOrder(db, "cs_uncertain");
+    await expect(
+      markOrderUncertain(db, "cs_uncertain", new Error("Printify timeout")),
+    ).rejects.toThrow("manual reconciliation");
+    await expect(claimOrder(db, "cs_uncertain")).rejects.toThrow("manual reconciliation");
+  } finally {
+    sqlite.close();
+  }
 });

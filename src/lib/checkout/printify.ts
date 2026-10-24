@@ -1,3 +1,4 @@
+import { isPublished } from "../printify/publication";
 import {
   CheckoutError,
   type Address,
@@ -17,6 +18,7 @@ type Product = {
   id: string;
   title: string;
   visible: boolean;
+  external?: { id?: string };
   currency?: unknown;
   variants: {
     id: number;
@@ -128,7 +130,7 @@ export async function quoteCart(
         throw new CheckoutError("Printify product currency does not match its USD source.", 503);
       if (
         product.id !== item.productId ||
-        product.visible !== true ||
+        !isPublished(product) ||
         !Array.isArray(product.variants)
       ) {
         throw new CheckoutError("A product is no longer available.");

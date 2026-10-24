@@ -3,6 +3,7 @@ declare module "virtual:stylex:css-only";
 declare namespace Cloudflare {
   interface Env {
     PRINTIFY_API_TOKEN?: string;
+    PRINTIFY_WEBHOOK_SECRET?: string;
     PRINTIFY_SHOP_ID?: string;
     PRINTIFY_STORE_URL?: string;
     PRINTIFY_CURRENCY?: string;

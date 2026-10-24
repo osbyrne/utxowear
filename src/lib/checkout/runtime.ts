@@ -3,6 +3,7 @@ import type { CheckoutDatabase } from "./orders";
 
 export type CheckoutBindings = {
   PRINTIFY_API_TOKEN?: string;
+  PRINTIFY_WEBHOOK_SECRET?: string;
   PRINTIFY_SHOP_ID?: string;
   PRINTIFY_CURRENCY?: string;
   PRINTIFY_USD_TO_EUR_RATE?: string;

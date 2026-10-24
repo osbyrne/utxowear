@@ -17,7 +17,8 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
@@ -38,6 +39,7 @@
     "wrangler": "^4.152.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@stylexjs/unplugin": "^0.19.1",
     "bun-types": "1.4.2",
     "oxfmt": "^0.66.0",

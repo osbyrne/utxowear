@@ -1,5 +1,7 @@
 # Copy to .dev.vars for local development. Never commit live credentials.
 PRINTIFY_API_TOKEN=
+# Shared signing secret for Printify product publication webhooks.
+PRINTIFY_WEBHOOK_SECRET=
 PRINTIFY_SHOP_ID=
 PRINTIFY_STORE_URL=https://utxowear.printify.me/
 # Customer checkout currency: USD or EUR. Printify Pop-Up source prices remain USD.

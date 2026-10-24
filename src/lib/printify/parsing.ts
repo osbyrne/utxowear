@@ -1,3 +1,4 @@
+import { isPublished } from "./publication";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 
@@ -197,7 +198,7 @@ export function normalizeApiProducts(
   config: PrintifyConfig,
 ): StoreProduct[] {
   return products
-    .filter((product) => product.visible)
+    .filter(isPublished)
     .map((product) => normalizeApiProduct(product, config))
     .filter((product): product is StoreProduct => Boolean(product));
 }

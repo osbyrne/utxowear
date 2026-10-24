@@ -222,6 +222,21 @@ export function makeCatalog(
       return yield* Effect.fail(validated);
     }
 
+    if (validated.token) {
+      const apiOutcome = yield* Effect.either(withSourceBudget("api", apiSource(validated)));
+
+      if (Either.isRight(apiOutcome)) {
+        return apiOutcome.right;
+      }
+
+      if (Either.isLeft(apiOutcome)) {
+        log(diagnosticFor("api", apiOutcome.left));
+      }
+      // An authenticated catalog is authoritative. Never replace drafts or an
+      // API outage with public previews or invented placeholder products.
+      return [];
+    }
+
     const publicOutcome = yield* Effect.either(withSourceBudget("public", publicSource(validated)));
     const publicProducts: readonly PublicStoreProduct[] = Either.isRight(publicOutcome)
       ? publicOutcome.right
@@ -232,20 +247,6 @@ export function makeCatalog(
     }
 
     const publicStoreProducts = normalizePublicProducts(publicProducts, validated);
-
-    if (validated.token) {
-      const apiOutcome = yield* Effect.either(withSourceBudget("api", apiSource(validated)));
-
-      if (Either.isRight(apiOutcome) && apiOutcome.right.length > 0) {
-        return apiOutcome.right;
-      }
-
-      if (Either.isLeft(apiOutcome)) {
-        log(diagnosticFor("api", apiOutcome.left));
-      } else {
-        log({ source: "api", tag: "EmptyCatalog" });
-      }
-    }
 
     if (publicStoreProducts.length > 0) return publicStoreProducts;
     if (Either.isRight(publicOutcome)) {

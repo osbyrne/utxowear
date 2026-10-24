@@ -34,7 +34,11 @@ export function configFromEnvironment(environment: PrintifyEnvironment): ConfigR
 // calling Printify on every page view (including its rate-limited catalog API).
 let catalogCache: { products: StoreProduct[]; expiresAt: number } | undefined;
 let catalogLoad: Promise<StoreProduct[]> | undefined;
-const CATALOG_TTL_MS = 5 * 60_000;
+const CATALOG_TTL_MS = 30_000;
+
+export function invalidatePrintifyCatalog(): void {
+  catalogCache = undefined;
+}
 
 export function getPrintifyProducts(environment: PrintifyEnvironment): Promise<StoreProduct[]> {
   const price = (products: StoreProduct[]) =>

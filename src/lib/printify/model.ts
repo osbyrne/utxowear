@@ -258,6 +258,7 @@ export const PrintifyProductSchema = Schema.Struct({
   variants: Schema.Array(PrintifyVariantSchema),
   external: Schema.optional(
     Schema.Struct({
+      id: Schema.optional(Schema.String),
       handle: Schema.optional(Schema.String),
     }),
   ),

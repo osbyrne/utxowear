@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "utxowear",
+  "keep_vars": true,
+  "kv_namespaces": [{ "binding": "SESSION", "id": "b9112fa2e69544598bbf6ee6a7efdd97" }],
   "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2025-12-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -9,6 +11,7 @@
     {
       "binding": "CHECKOUT_DB",
       "database_name": "utxowear-checkout",
+      "database_id": "586d6638-c643-4512-85f0-e4255f6ee316",
       "migrations_dir": "migrations",
     },
   ],

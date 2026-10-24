@@ -107,12 +107,33 @@ Printify Express can split one cart into express and ordinary fulfillment orders
 its production scheduling is controlled by Printify. Confirm shop approval and
 express behavior in Printify before enabling live Express checkout.
 
-The catalog requests Printify's public storefront first, then, with a token,
-pages through the authenticated product API. API data supplies all mockups,
-enabled variants, and prices. If the API is unavailable, the grid still displays
-public products, but purchase controls remain unavailable. Each Worker isolate
-caches a complete catalog for five minutes and coalesces concurrent page loads.
-The server/client catalog implementation is in `src/lib/printify/`.
+The authenticated Printify API is authoritative: only products with `visible=true`
+and a nonempty `external.id` publication marker appear or pass checkout validation.
+New drafts have `visible=true` too, so visibility alone is insufficient. Published
+products remain listed during an update; new pending products stay hidden until
+publishing is acknowledged. A successful empty catalog and API failures never
+resurrect public previews or placeholder products. Without an API token, the
+legacy public preview fallback remains available for local demonstrations.
+
+### Printify publishing
+
+Register signed webhooks for `product:publish:started`, `product:updated`, and
+`product:deleted` at `https://YOUR-DOMAIN/api/printify-webhook`. Supply the same
+random shared signing secret in each Printify subscription and in the Worker
+secret `PRINTIFY_WEBHOOK_SECRET`. These are separate from Stripe webhooks.
+The handler verifies Printify's `X-Pfy-Signature` HMAC over the raw body and scopes
+API operations to `PRINTIFY_SHOP_ID`.
+
+Printify Publish sends create/update requests. The handler checks the pending
+product and acknowledges it with `publishing_succeeded`, setting its persistent
+external ID and a link into our catalog. Products missing mockups or available
+priced variants receive `publishing_failed`. Unpublish sends a delete publishing
+action; the handler acknowledges it through Printify's `unpublish` endpoint.
+Completed publishing deliveries are no-ops when replayed. Changes invalidate the
+receiving isolate's catalog cache; other isolates refresh within 30 seconds.
+Checkout always re-fetches publication state, so a cached card cannot sell a draft
+or an unpublished product. Existing published markers from the old Pop-Up store
+are preserved; drafts are not automatically published during migration.
 
 ## Commands
 
@@ -122,7 +143,8 @@ The server/client catalog implementation is in `src/lib/printify/`.
 | `bun run migrate:local`  | Apply checkout ledger migration to local D1                     |
 | `bun run migrate:remote` | Apply checkout ledger migration to production D1                |
 | `bun check`              | Type-check Astro and TypeScript                                 |
-| `bun test`               | Run deterministic integration tests                             |
+| `bun test`               | Run the focused runtime integration tests                       |
+| `bun run test:e2e`       | Run three browser smoke tests against the live store             |
 | `bun run build`          | Build the Worker into `dist/`                                   |
 | `bun run deploy`         | Build and deploy the Worker                                     |
 
@@ -144,3 +166,5 @@ Astro's production stylesheet. The development-only stylesheet and HMR import in
 
 Use explicit border width, style, and color properties in StyleX definitions.
 Run `bun check` and `bun build` to validate changes.
+
+See [testing](docs/testing.md) for scope, browser setup, and payment-test limits.

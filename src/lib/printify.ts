@@ -9,21 +9,23 @@ import { makeCatalog } from "./printify/catalog";
 import { FetchLive } from "./printify/client";
 import type { StoreProduct } from "./printify/model";
 import { priceCatalog } from "./pricing";
+import { fulfillmentEnvironment, type FulfillmentBindings } from "./checkout/environment";
 
 export type { StoreProduct } from "./printify/model";
 
-export type PrintifyEnvironment = Readonly<{
-  readonly PRINTIFY_API_TOKEN?: string;
-  readonly PRINTIFY_SHOP_ID?: string;
-  readonly PRINTIFY_STORE_URL?: string;
-  readonly PRINTIFY_CURRENCY?: string;
-  readonly PRINTIFY_USD_TO_EUR_RATE?: string;
-}>;
+export type PrintifyEnvironment = Readonly<
+  FulfillmentBindings & {
+    readonly PRINTIFY_API_TOKEN?: string;
+    readonly PRINTIFY_STORE_URL?: string;
+    readonly PRINTIFY_CURRENCY?: string;
+    readonly PRINTIFY_USD_TO_EUR_RATE?: string;
+  }
+>;
 
 export function configFromEnvironment(environment: PrintifyEnvironment): ConfigResult {
   const input: PrintifyConfigInput = {
     token: environment.PRINTIFY_API_TOKEN,
-    shopId: environment.PRINTIFY_SHOP_ID,
+    shopId: fulfillmentEnvironment(environment).shopId,
     storeUrl: environment.PRINTIFY_STORE_URL,
     currency: environment.PRINTIFY_CURRENCY,
   };

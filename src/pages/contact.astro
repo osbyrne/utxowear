@@ -1,0 +1,77 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+import { contact } from '../styles/contact.stylex';
+import Storefront from '../layouts/Storefront.astro';
+
+
+---
+
+<Storefront title="Contact — utxowear">
+  <main {...stylex.attrs(styles.main, contact.content)}>
+    <article {...stylex.attrs(contact.article)} aria-labelledby="contact-title">
+      <h1 id="contact-title" {...stylex.attrs(contact.heading)}>Contact</h1>
+      <p {...stylex.attrs(contact.intro)}>Have a question about a product or your order? Send us a message using the form below.</p>
+      <form id="contact-form" {...stylex.attrs(contact.form)}>
+        <div {...stylex.attrs(contact.row)}>
+          <label {...stylex.attrs(styles.field)}>
+            <span>Name</span>
+            <input {...stylex.attrs(styles.input)} name="name" autocomplete="name" required maxlength="100" />
+          </label>
+          <label {...stylex.attrs(styles.field)}>
+            <span>Email</span>
+            <input {...stylex.attrs(styles.input)} name="email" type="email" autocomplete="email" required maxlength="254" />
+          </label>
+        </div>
+        <label {...stylex.attrs(styles.field)}>
+          <span>Phone number (optional)</span>
+          <input {...stylex.attrs(styles.input)} name="phone" type="tel" autocomplete="tel" maxlength="50" />
+        </label>
+        <label {...stylex.attrs(styles.field)}>
+          <span>Message</span>
+          <textarea {...stylex.attrs(styles.input, contact.message)} name="message" rows="10" required maxlength="5000"></textarea>
+        </label>
+        <label {...stylex.attrs(contact.trap)} aria-hidden="true">
+          Leave this field empty
+          <input name="website" tabindex="-1" autocomplete="off" />
+        </label>
+        <p id="contact-status" role="status" aria-live="polite"></p>
+        <button {...stylex.attrs(styles.primaryButton, contact.submit)} type="submit" disabled>Send message</button>
+        <noscript>Please enable JavaScript to send a message.</noscript>
+      </form>
+    </article>
+  </main>
+</Storefront>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('#contact-form');
+  const button = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const status = document.querySelector<HTMLParagraphElement>('#contact-status');
+  if (form && button && status) {
+    button.disabled = false;
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      status.textContent = '';
+      try {
+        const response = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        });
+        const result = await response.json();
+        if (!result || typeof result !== 'object' || !('message' in result) || typeof result.message !== 'string')
+          throw new Error('Invalid response');
+        status.textContent = result.message;
+        if (response.ok) form.reset();
+      } catch {
+        status.textContent = 'Your message could not be sent. Please try again later.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Send message';
+      }
+    });
+  }
+</script>

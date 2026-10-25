@@ -20,6 +20,7 @@ export type CheckoutSnapshot = {
 };
 
 type StripeSession = {
+  livemode?: unknown;
   id?: unknown;
   url?: unknown;
   mode?: unknown;
@@ -167,8 +168,8 @@ export async function createStripeSession(
     mode: "payment",
     customer: customerResult.id,
     "automatic_tax[enabled]": "true",
-    success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/?checkout=cancel`,
+    success_url: `${origin}/cart?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/cart?checkout=cancel`,
     "metadata[checkout_version]": "3",
     "metadata[currency]": quote.currency,
     "metadata[customer]": customerResult.id,
@@ -260,7 +261,7 @@ export async function verifyStripeWebhook(
   body: string,
   signature: string | null,
   secret: string,
-): Promise<{ type: string; data: { object: StripeSession } }> {
+): Promise<{ type: string; livemode?: unknown; data: { object: StripeSession } }> {
   const parts = signature?.split(",").map((part) => part.trim()) ?? [];
   const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);
   const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
@@ -312,5 +313,5 @@ export async function verifyStripeWebhook(
   ) {
     throw new CheckoutError("Invalid Stripe webhook event.", 400);
   }
-  return event as { type: string; data: { object: StripeSession } };
+  return event as { type: string; livemode?: unknown; data: { object: StripeSession } };
 }

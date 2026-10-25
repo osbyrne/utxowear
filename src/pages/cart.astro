@@ -1,0 +1,16 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+import Storefront from '../layouts/Storefront.astro';
+import Checkout from '../components/Checkout';
+import { getPrintifyProducts } from '../lib/printify';
+import { env } from 'cloudflare:workers';
+
+const products = await getPrintifyProducts(env);
+---
+
+<Storefront title="Your bag — utxowear">
+  <main {...stylex.attrs(styles.main)}>
+    <Checkout products={products} bag client:load />
+  </main>
+</Storefront>

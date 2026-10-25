@@ -13,7 +13,7 @@ const products = await getPrintifyProducts(env);
   <main {...stylex.attrs(styles.main)}>
     <section aria-labelledby="products-title">
       <div {...stylex.attrs(styles.catalogHeading)}>
-        <a href="/" {...stylex.attrs(styles.productLink)}>← Back to the shirt</a>
+        <a href="/" {...stylex.attrs(styles.productLink)}>← Back</a>
         <h1 id="products-title" {...stylex.attrs(styles.pageHeading)}>All products</h1>
       </div>
       <ProductList products={products} catalog />

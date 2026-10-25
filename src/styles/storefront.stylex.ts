@@ -66,6 +66,7 @@ export const styles = stylex.create({
   },
   navbar: {
     display: "flex",
+    flexWrap: "wrap",
     alignItems: "center",
     minHeight: "4rem",
     gap: "0.5rem",
@@ -193,6 +194,13 @@ export const styles = stylex.create({
     textAlign: "center",
   },
   moreRow: { display: "flex", justifyContent: "center", marginTop: "2rem" },
+  cardLink: { display: "block", color: "inherit", textDecoration: "none" },
+  productDetail: {
+    display: "grid",
+    gridTemplateColumns: { default: "1fr", "@media (min-width: 768px)": "1fr 1fr" },
+  },
+  detailTitle: { fontSize: "1.75rem", lineHeight: 1.2 },
+  detailDescription: { marginTop: "1rem", whiteSpace: "pre-wrap", lineHeight: 1.6 },
   card: {
     minWidth: 0,
     overflow: "hidden",
@@ -217,8 +225,8 @@ export const styles = stylex.create({
   productBody: { padding: { default: "0.75rem", "@media (min-width: 640px)": "1rem" } },
   productHeading: {
     display: "flex",
+    flexDirection: "column",
     alignItems: "flex-start",
-    justifyContent: "space-between",
     gap: "0.5rem",
   },
   productTitle: {

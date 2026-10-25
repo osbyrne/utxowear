@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import Catalog from "./Catalog";
+import ProductCard from "./ProductCard";
 import { money } from "./ProductCard";
 import { styles } from "../styles/storefront.stylex";
 import { validateAmount, type Currency } from "../lib/checkout/domain";
@@ -127,9 +128,13 @@ const addressFields: {
 export default function Checkout({
   products,
   catalog = false,
+  bag = false,
+  productId,
 }: {
   products: StoreProduct[];
   catalog?: boolean;
+  bag?: boolean;
+  productId?: string;
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [address, setAddress] = useState<Address>(emptyAddress);
@@ -388,12 +393,34 @@ export default function Checkout({
 
   return (
     <>
-      <Catalog products={products} full={catalog} onAdd={add} />
-      {(cart.length > 0 || notice) && (
+      {!bag &&
+        (productId ? (
+          products
+            .filter((product) => product.id === productId)
+            .map((product) => <ProductCard key={product.id} product={product} onAdd={add} detail />)
+        ) : (
+          <Catalog products={products} full={catalog} onAdd={add} />
+        ))}
+      {!bag && notice && (
+        <p {...stylex.props(styles.notice)} role="status">
+          {notice} <a href="/cart">View bag</a>
+        </p>
+      )}
+      {!bag && error && (
+        <p {...stylex.props(styles.error)} role="alert">
+          {error}
+        </p>
+      )}
+      {bag && (
         <section id="cart" {...stylex.props(styles.checkoutPanel)} aria-labelledby="cart-title">
-          <h2 id="cart-title" {...stylex.props(styles.checkoutHeading)}>
+          <h1 id="cart-title" {...stylex.props(styles.checkoutHeading)}>
             Your bag
-          </h2>
+          </h1>
+          {cartLoaded && cart.length === 0 && (
+            <p>
+              Your bag is empty. <a href="/products">Browse products</a>
+            </p>
+          )}
           {notice && (
             <p {...stylex.props(styles.notice)} role="status">
               {notice}
@@ -454,8 +481,8 @@ export default function Checkout({
               </p>
               {currency === "USD" && (
                 <p {...stylex.props(styles.muted)}>
-                  Prices and payments are in USD. Your card issuer handles currency conversion
-                  and may charge exchange fees.
+                  Prices and payments are in USD. Your card issuer handles currency conversion and
+                  may charge exchange fees.
                 </p>
               )}
               <form onSubmit={requestQuote} {...stylex.props(styles.checkoutForm)}>

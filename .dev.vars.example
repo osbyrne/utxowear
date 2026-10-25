@@ -3,6 +3,10 @@ PRINTIFY_API_TOKEN=
 # Shared signing secret for Printify product publication webhooks.
 PRINTIFY_WEBHOOK_SECRET=
 PRINTIFY_SHOP_ID=
+# Safe default: simulate. Production must explicitly set production.
+# test creates real orders in a separate shop and blocks Printify Express.
+FULFILLMENT_MODE=simulate
+PRINTIFY_TEST_SHOP_ID=
 PRINTIFY_STORE_URL=https://utxowear.printify.me/
 # Customer checkout currency: USD or EUR. Printify Pop-Up source prices remain USD.
 PRINTIFY_CURRENCY=USD
@@ -13,3 +17,8 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 # The public HTTPS origin for Stripe success/cancel URLs (localhost for development).
 CHECKOUT_ORIGIN=http://localhost:4321
+
+# Contact form delivery (server-only; never use PUBLIC_ prefixes).
+RESEND_API_KEY=
+# Sender on a domain verified in Resend, e.g. utxowear <contact@your-domain.com>
+CONTACT_FROM_EMAIL=

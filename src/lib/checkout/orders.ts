@@ -34,6 +34,11 @@ export async function claimOrder(
     .bind(sessionId)
     .first<OrderRow>();
   if (row?.status === "created" && row.printify_order_id) return "created";
+  if (row?.status === "simulated")
+    throw new CheckoutError(
+      "This checkout was simulated. Start a new checkout for a fulfillment test.",
+      409,
+    );
   console.error(
     `[Checkout] MANUAL RECONCILIATION REQUIRED: session=${sessionId}, status=${row?.status ?? "missing"}. Search Printify orders for external_id=${sessionId}; if found set status='created' and printify_order_id to the actual order ID. If confirmed absent, set status='pending' to allow one deliberate retry. Never clear or delete the row without checking Printify first.`,
   );
@@ -41,6 +46,24 @@ export async function claimOrder(
     "Order requires manual reconciliation. Contact support with your Stripe session ID.",
     503,
   );
+}
+
+export async function recordSimulatedOrder(db: CheckoutDatabase, sessionId: string): Promise<void> {
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO checkout_orders (session_id, printify_order_id, status, updated_at) VALUES (?, NULL, 'simulated', ?)",
+    )
+    .bind(sessionId, new Date().toISOString())
+    .run();
+  const row = await db
+    .prepare("SELECT status, printify_order_id FROM checkout_orders WHERE session_id = ?")
+    .bind(sessionId)
+    .first<OrderRow>();
+  if (row?.status !== "simulated")
+    throw new CheckoutError(
+      "Checkout already has a physical fulfillment record; cannot simulate it.",
+      409,
+    );
 }
 
 export async function markOrderCreated(

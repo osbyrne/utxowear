@@ -12,7 +12,7 @@ import { usdPricing, type PricingConfig } from "../pricing";
 
 const BASE = "https://api.printify.com/v1";
 
-type PrintifyConfig = PricingConfig & { token: string; shopId?: string };
+type PrintifyConfig = PricingConfig & { token: string; shopId?: string; allowExpress?: boolean };
 
 type Product = {
   id: string;
@@ -177,18 +177,22 @@ export async function quoteCart(
     items: priced,
     address,
     subtotal,
-    options: shippingOptions(result, pricing),
+    options: shippingOptions(result, pricing).filter(
+      (option) => config.allowExpress !== false || option.method !== 3,
+    ),
   };
 }
 
 export async function createPrintifyOrder(
-  config: PrintifyConfig,
+  config: PrintifyConfig & { allowExpress: boolean },
   shopId: string,
   sessionId: string,
   items: CartItem[],
   address: Address,
   shippingMethod: number,
 ): Promise<string> {
+  if (shippingMethod === 3 && !config.allowExpress)
+    throw new CheckoutError("Printify Express is disabled for fulfillment tests.", 400);
   const path = `/shops/${shopId}/orders${shippingMethod === 3 ? "/express" : ""}.json`;
   const result = await printifyRequest(config, path, "POST", {
     external_id: sessionId,

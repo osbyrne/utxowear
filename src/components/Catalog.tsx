@@ -23,8 +23,6 @@ export default function Catalog({
   const visible = full ? filterProducts(products, filters) : products.slice(0, 4);
   const sizes = optionValues(products, "size");
   const colors = optionValues(products, "color");
-  const currencies = [...new Set(products.map((product) => product.currency))];
-  const priceLabel = currencies.length === 1 ? ` (${currencies[0]})` : "";
   const active = Object.entries(filters).some(
     ([key, value]) => value !== emptyFilters[key as keyof CatalogFilters],
   );
@@ -86,30 +84,6 @@ export default function Catalog({
             </label>
           )}
           <label {...stylex.props(styles.field)}>
-            <span>Min price{priceLabel}</span>
-            <input
-              {...stylex.props(styles.input)}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Any"
-              value={filters.minPrice}
-              onChange={(event) => update("minPrice", event.target.value)}
-            />
-          </label>
-          <label {...stylex.props(styles.field)}>
-            <span>Max price{priceLabel}</span>
-            <input
-              {...stylex.props(styles.input)}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Any"
-              value={filters.maxPrice}
-              onChange={(event) => update("maxPrice", event.target.value)}
-            />
-          </label>
-          <label {...stylex.props(styles.field)}>
             <span>Sort by</span>
             <select
               {...stylex.props(styles.input)}
@@ -124,22 +98,22 @@ export default function Catalog({
           </label>
         </form>
       )}
-      <div {...stylex.props(styles.catalogResults)}>
-        <p {...stylex.props(styles.count)} role="status" aria-live="polite">
-          {full
-            ? `${visible.length} of ${products.length} products`
-            : `${visible.length} selected ${visible.length === 1 ? "piece" : "pieces"}`}
-        </p>
-        {full && active && (
-          <button
-            type="button"
-            {...stylex.props(styles.removeButton)}
-            onClick={() => setFilters(emptyFilters)}
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
+      {full && (
+        <div {...stylex.props(styles.catalogResults)}>
+          <p {...stylex.props(styles.count)} role="status" aria-live="polite">
+            {`${visible.length} of ${products.length} products`}
+          </p>
+          {full && active && (
+            <button
+              type="button"
+              {...stylex.props(styles.removeButton)}
+              onClick={() => setFilters(emptyFilters)}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
       {visible.length ? (
         <div {...stylex.props(styles.productGrid)}>
           {visible.map((product) => (

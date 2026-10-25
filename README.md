@@ -5,7 +5,9 @@
 The storefront displays Printify products and enabled size/color variants. The
 cart collects a delivery address, asks Printify for destination-specific shipping
 rates, and starts a Stripe-hosted payment. A Stripe-signed webhook creates the
-Printify order **only after payment succeeds**. The Printify token and Stripe
+Printify order **only after a live payment succeeds in production mode**.
+Sandbox payments simulate fulfillment unless a separate test shop is explicitly
+enabled (see [Environments](#environments)). The Printify token and Stripe
 secret keys are never sent to browsers. Public-store or local fallback products
 have no trustworthy variant IDs and cannot be purchased through this checkout.
 
@@ -66,16 +68,107 @@ before accepting live payments.
    The listener defaults to sandbox mode. For live payments, use a live-mode
    webhook endpoint and its own signing secret; a sandbox listener secret does
    not configure delivery of live payment events.
-4. Test a complete payment with Stripe test credentials and a valid Printify
-   test shop before accepting real money. Printify has no sandbox order API:
-   a successful paid test checkout can create an actual fulfillment order.
-   Set Printify order approval to **Manual** while testing and reconcile orders
-   in the Printify dashboard before release.
+4. Keep `FULFILLMENT_MODE=simulate` for normal sandbox payments. Completed paid
+   sessions are recorded locally as `simulated`; no Printify order is submitted.
+   Use the explicit test-shop procedure below only when deliberately verifying
+   real Printify order creation.
 
 Local sandbox payment, webhook, duplicate-delivery, and Printify order creation
 were verified on 22 October 2026; the test order was canceled without production.
-See [checkout end-to-end verification](docs/checkout-e2e.md) for evidence and limits.
+See [checkout end-to-end verification](docs/checkout-e2e.md) for historical evidence
+and limits. That report predates the environment guard; sandbox payments now
+simulate fulfillment by default.
 Stripe Checkout uses dashboard-managed dynamic payment methods.
+
+## Environments
+
+`FULFILLMENT_MODE` controls physical order creation independently of the hostname,
+`NODE_ENV`, or whether the Worker runs locally. An unset value defaults to
+`simulate`; an unrecognized value fails closed. Local development and staging
+should normally use `simulate`.
+
+| Configuration | Stripe API key and signed events | Printify catalog and shipping | Paid-session fulfillment |
+| --- | --- | --- | --- |
+| `simulate` (default) | Test mode only | `PRINTIFY_SHOP_ID`, or the existing single-shop fallback | D1 row with `status='simulated'`, no Printify order or production |
+| `production` | Live mode only | Required `PRINTIFY_SHOP_ID` | Real order in that production shop; its approval settings apply |
+| `test` (explicit opt-in) | Test mode only | Required `PRINTIFY_TEST_SHOP_ID`, distinct from `PRINTIFY_SHOP_ID` | Real order in the separate test shop; Express is blocked |
+
+Both the signed Stripe event and Checkout Session must contain matching boolean
+`livemode` values for the configured mode. Missing, inconsistent, or wrong-mode
+values are rejected before any fulfillment ledger or Printify write. Checkout
+also rejects a live API key in sandbox modes or a test API key in production
+before creating a Stripe customer/session. Standard `sk_` and restricted `rk_`
+keys are supported. Keep API keys, webhook signing secrets, and endpoint/listener
+mode aligned; a signing secret alone does not identify test versus live mode.
+
+### Normal development and staging
+
+```dotenv
+FULFILLMENT_MODE=simulate
+```
+
+Use a Stripe sandbox API key, its sandbox webhook secret or CLI listener secret,
+and local/staging D1. Printify catalog and shipping calls remain real API reads
+and quotes; only paid-order fulfillment is simulated. The webhook returns
+`{"received":true,"fulfillment":"simulated"}` after recording the session ID
+with no Printify order ID. Duplicate deliveries reuse that record. Changing the
+mode later cannot turn an already simulated session into a physical order; start
+a new checkout for a deliberate fulfillment test.
+
+### Production
+
+```dotenv
+FULFILLMENT_MODE=production
+PRINTIFY_SHOP_ID=<production-shop-id>
+```
+
+Use a live Stripe key, a live webhook endpoint/signing secret, the production
+Printify credentials, and production D1. Signed sandbox events are rejected and
+cannot create orders. Real customer orders may keep automatic approval enabled;
+the application does not change Printify approval settings.
+
+**Before deploying this guard to an existing live store, explicitly configure
+`FULFILLMENT_MODE=production` on the Worker.** Otherwise the safe default rejects
+live checkout creation and fulfillment. For example, run
+`bunx wrangler secret put FULFILLMENT_MODE` and enter `production`, then deploy.
+Local `.env` files do not configure deployed Worker secrets. Apply D1 migrations
+and register both completion events described in Deployment.
+
+### Deliberate Printify fulfillment tests
+
+```dotenv
+FULFILLMENT_MODE=test
+PRINTIFY_SHOP_ID=<production-shop-id>
+PRINTIFY_TEST_SHOP_ID=<different-test-shop-id>
+```
+
+This mode is an explicit opt-in to **real Printify orders**, even though Stripe
+uses test money. Create a separate Printify API shop, set that shop's order
+approval to **Manual**, and publish the products to test there. Configure its API
+credentials and test-shop product webhooks in the isolated local/staging
+environment. `PRINTIFY_SHOP_ID` remains the production-shop reference; catalog,
+quotes, publishing acknowledgements, and order submission select
+`PRINTIFY_TEST_SHOP_ID`. Never substitute or relabel production product IDs as
+test-shop products. Orders whose signed snapshot names another shop are rejected.
+
+Express is removed from test shipping options and rejected again at webhook and
+provider submission, including sessions issued before a mode change. Ordinary
+orders still depend on the test shop's actual Manual approval setting: the app
+does not verify or change that setting. Reconcile and cancel test orders in
+Printify, then restore `FULFILLMENT_MODE=simulate` and restart the local server.
+Use separate D1 databases and webhook secrets for development, staging, and
+production; do not replay production events into a test deployment.
+
+Printify has no sandbox order API. Its [Express approval rules](https://help.printify.com/hc/en-us/articles/7435676870545-What-is-Express-Delivery-and-how-does-it-work)
+bypass Manual approval, and its [order API](https://developers.printify.com/#orders)
+can accept eligible Express products even when Express is disabled in the
+dashboard. Printify settings alone cannot establish this boundary.
+
+Simulation applies to order fulfillment. Product publishing webhooks still
+perform real Printify writes in their selected shop; register subscriptions only
+for the intended environment. Keep each environment's settings in its own secret
+store or ignored local file. With local Wrangler, `.dev.vars` takes precedence
+over `.env`; use one, not both, and restart after changing modes or shop IDs.
 
 ### Deployment
 
@@ -85,10 +178,11 @@ record the generated database ID in `wrangler.jsonc` and apply
 `bun run migrate:remote` before taking payments. Set secrets with
 `bunx wrangler secret put PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET`, and `CHECKOUT_ORIGIN`, and set
-`PRINTIFY_SHOP_ID`, `PRINTIFY_CURRENCY`, and (for EUR) `PRINTIFY_USD_TO_EUR_RATE`
+`FULFILLMENT_MODE=production`, `PRINTIFY_SHOP_ID`, `PRINTIFY_CURRENCY`, and (for EUR) `PRINTIFY_USD_TO_EUR_RATE`
 for this Worker. Register
 `https://YOUR-DOMAIN/api/stripe-webhook` in Stripe with the
-`checkout.session.completed` event; its signing secret must match the deployed
+`checkout.session.completed` and `checkout.session.async_payment_succeeded`
+events; its signing secret must match the deployed
 `STRIPE_WEBHOOK_SECRET`. Configure `CHECKOUT_ORIGIN` as the exact public HTTPS
 origin. Apply future migrations before deploying code that depends on them.
 
@@ -103,9 +197,9 @@ metadata carry the server currency; signed webhooks must match that currency,
 subtotal, shipping, tax, and paid total. Existing version 2 USD sessions remain
 valid independently of the current store currency.
 
-Printify Express can split one cart into express and ordinary fulfillment orders;
-its production scheduling is controlled by Printify. Confirm shop approval and
-express behavior in Printify before enabling live Express checkout.
+Printify Express can split one cart into express and ordinary fulfillment orders
+and starts production immediately regardless of Manual approval. It is available
+for live production orders and blocked for opted-in fulfillment tests.
 
 The authenticated Printify API is authoritative: only products with `visible=true`
 and a nonempty `external.id` publication marker appear or pass checkout validation.
@@ -168,3 +262,22 @@ Use explicit border width, style, and color properties in StyleX definitions.
 Run `bun check` and `bun build` to validate changes.
 
 See [testing](docs/testing.md) for scope, browser setup, and payment-test limits.
+
+### Contact form email delivery
+
+`/contact` posts to `/api/contact`. Only the server sends to the fixed inbox;
+HTML, browser JavaScript, and API responses never include the destination address.
+Delivery uses the Resend HTTP API directly, without an SDK dependency. Configure:
+
+- `RESEND_API_KEY`: a Resend sending API key.
+- `CONTACT_FROM_EMAIL`: a sender address on a domain verified in Resend.
+
+For local development, set these in your ignored local environment file (see the
+example files). For production, set them with `bunx wrangler secret put RESEND_API_KEY`
+and `bunx wrangler secret put CONTACT_FROM_EMAIL`, then deploy. Never use `PUBLIC_`
+variables for these settings. Missing configuration returns a generic unavailable
+message and preserves the visitor's form. Provider errors are not exposed.
+The sender's email is used as Reply-To, so replies go to the visitor.
+The form validates input on both sides, caps request size, checks same-origin
+submissions, and includes a honeypot. The honeypot is basic spam mitigation;
+configure Cloudflare rate limiting or Turnstile if automated abuse becomes an issue.

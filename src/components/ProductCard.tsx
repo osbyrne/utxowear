@@ -16,8 +16,10 @@ export function money(cents: number, currency: string) {
 export default function ProductCard({
   product,
   onAdd,
+  detail = false,
 }: {
   product: StoreProduct;
+  detail?: boolean;
   onAdd: (product: StoreProduct, variant: StoreVariant, quantity: number) => void;
 }) {
   const [variantId, setVariantId] = useState(product.defaultVariantId ?? product.variants[0]?.id);
@@ -28,8 +30,13 @@ export default function ProductCard({
     !product.checkoutUnavailableReason &&
     Boolean(variant);
 
+  const Tag = detail ? "article" : "a";
   return (
-    <article id={`product-${product.id}`} {...stylex.props(styles.card)}>
+    <Tag
+      href={detail ? undefined : `/products/${encodeURIComponent(product.id)}`}
+      id={`product-${product.id}`}
+      {...stylex.props(styles.card, styles.cardLink, detail && styles.productDetail)}
+    >
       <figure {...stylex.props(styles.figure)}>
         <img
           {...stylex.props(styles.image)}
@@ -40,15 +47,21 @@ export default function ProductCard({
       </figure>
       <div {...stylex.props(styles.productBody)}>
         <div {...stylex.props(styles.productHeading)}>
-          <h3 {...stylex.props(styles.productTitle)}>{product.title}</h3>
+          {detail ? (
+            <h1 {...stylex.props(styles.detailTitle)}>{product.title}</h1>
+          ) : (
+            <h3 {...stylex.props(styles.productTitle)}>{product.title}</h3>
+          )}
           <span {...stylex.props(styles.price)}>
             {money(variant?.price ?? product.price, product.currency)}
           </span>
         </div>
-        <p {...stylex.props(styles.description)}>
-          {product.description || "Printify-made / unisex fit"}
-        </p>
-        {purchasable ? (
+        {detail && (
+          <p {...stylex.props(styles.detailDescription)}>
+            {product.description || "Printify-made / unisex fit"}
+          </p>
+        )}
+        {detail && purchasable && (
           <div {...stylex.props(styles.productControls)}>
             <label {...stylex.props(styles.field)}>
               <span>Size / color</span>
@@ -59,10 +72,8 @@ export default function ProductCard({
               >
                 {product.variants.map((choice) => (
                   <option key={choice.id} value={choice.id}>
-                    {choice.options.length
-                      ? choice.options.map(({ name, value }) => `${name}: ${value}`).join(" / ")
-                      : choice.title}{" "}
-                    — {money(choice.price, product.currency)}
+                    {choice.options.map(({ name, value }) => `${name}: ${value}`).join(" / ") ||
+                      choice.title}
                   </option>
                 ))}
               </select>
@@ -90,13 +101,14 @@ export default function ProductCard({
               </button>
             </div>
           </div>
-        ) : (
+        )}
+        {!purchasable && (
           <p {...stylex.props(styles.unavailable)}>
             {product.checkoutUnavailableReason ??
               "Preview only — this item is not available for checkout."}
           </p>
         )}
       </div>
-    </article>
+    </Tag>
   );
 }

@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { CheckoutError, jsonError } from "../../lib/checkout/domain";
 import { checkoutBindings } from "../../lib/checkout/runtime";
+import { fulfillmentEnvironment } from "../../lib/checkout/environment";
 import { invalidatePrintifyCatalog } from "../../lib/printify";
 import { handlePublishingEvent, verifyPrintifySignature } from "../../lib/printify/publishing";
 
@@ -16,7 +17,7 @@ export const POST: APIRoute = async ({ request }) => {
       !env.CHECKOUT_ORIGIN
     )
       throw new CheckoutError("Printify publishing is not configured.", 503);
-    if (!/^\d+$/.test(env.PRINTIFY_SHOP_ID)) throw new CheckoutError("Invalid Printify shop.", 503);
+    const shopId = fulfillmentEnvironment(env).shopId!;
     if (Number(request.headers.get("content-length")) > 100_000)
       throw new CheckoutError("Webhook is too large.", 413);
     const body = await request.text();
@@ -33,7 +34,7 @@ export const POST: APIRoute = async ({ request }) => {
       throw new CheckoutError("Invalid Printify event JSON.", 400);
     }
     await handlePublishingEvent(
-      { token: env.PRINTIFY_API_TOKEN, shopId: env.PRINTIFY_SHOP_ID, origin: env.CHECKOUT_ORIGIN },
+      { token: env.PRINTIFY_API_TOKEN, shopId, origin: env.CHECKOUT_ORIGIN },
       event,
     );
     invalidatePrintifyCatalog();

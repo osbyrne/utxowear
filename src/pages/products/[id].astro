@@ -1,0 +1,21 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../../styles/storefront.stylex';
+import Storefront from '../../layouts/Storefront.astro';
+import Checkout from '../../components/Checkout';
+import { getPrintifyProducts } from '../../lib/printify';
+import { env } from 'cloudflare:workers';
+
+const products = await getPrintifyProducts(env);
+const product = products.find((candidate) => candidate.id === Astro.params.id);
+if (!product) Astro.response.status = 404;
+---
+
+<Storefront title={`${product?.title ?? 'Product not found'} — utxowear`}>
+  <main {...stylex.attrs(styles.main)}>
+    <div {...stylex.attrs(styles.catalogHeading)}>
+      <a href="/products" {...stylex.attrs(styles.productLink)}>← All products</a>
+    </div>
+    {product ? <Checkout products={products} productId={product.id} client:load /> : <h1>Product not found</h1>}
+  </main>
+</Storefront>

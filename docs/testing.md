@@ -1,6 +1,6 @@
 # Testing
 
-Use `bun run check` for TypeScript/Astro checks and `bun test` for the nine
+Use `bun run check` for TypeScript/Astro checks and `bun test` for the focused
 runtime regressions. `bunfig.toml` keeps Bun's runner scoped to `src/lib`, so
 it does not try to execute Playwright's browser specs.
 
@@ -12,6 +12,8 @@ The runtime suite covers risks that static typing cannot establish:
   and completed-event replay.
 - Integer money conversion and failure when a conversion rate is unavailable.
 - Stripe USD/EUR session snapshots, paid totals, tax, currency, and signatures.
+- Signed webhook environment isolation, simulated fulfillment, separate test-shop
+  routing, Express rejection in tests, and prevention of simulated-session promotion.
 - Draft rejection before shipping/payment.
 - Duplicate fulfillment and uncertain submissions using the real migration
   and actual SQLite queries, rather than a fake SQL state machine. This is not
@@ -58,9 +60,12 @@ The browser checks cover:
 All `/api/checkout` requests are blocked or fulfilled locally by the test runner.
 The Stripe navigation in the third case is intercepted too. These smoke tests
 cannot charge a payment or create Printify orders. They do not test the Stripe
-hosted payment form, webhook delivery, or production fulfillment. Those require
-an explicitly supervised sandbox payment with Printify approval set to Manual;
-see the historical [checkout E2E report](checkout-e2e.md) and
+hosted payment form, webhook delivery, or production fulfillment. A normal sandbox
+payment uses `FULFILLMENT_MODE=simulate` and cannot create Printify orders.
+Deliberate real-order testing requires `FULFILLMENT_MODE=test`, a separate
+`PRINTIFY_TEST_SHOP_ID`, and Manual approval in that test shop; Express is blocked.
+See [environment setup](../README.md#environments), the historical
+[checkout E2E report](checkout-e2e.md), and
 [publishing verification](printify-publishing.md).
 
 Failure screenshots and traces are saved under ignored `test-results/`.

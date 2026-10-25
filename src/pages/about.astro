@@ -1,0 +1,19 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+import { about } from '../styles/about.stylex';
+import Storefront from '../layouts/Storefront.astro';
+
+
+---
+
+<Storefront title="About — utxowear">
+  <main {...stylex.attrs(styles.main, about.content)}>
+    <article {...stylex.attrs(about.article)} aria-labelledby="about-title">
+      <h1 id="about-title" {...stylex.attrs(about.heading)}>About</h1>
+      <p {...stylex.attrs(about.copy)}>
+        UTxO stands for Unspent Transaction (Tx) Outputs. It is the accounting model behind Bitcoin. I started reading whitepapers to understand the technology, and quickly wanted to wear their colors.
+      </p>
+    </article>
+  </main>
+</Storefront>

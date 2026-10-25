@@ -1,10 +1,14 @@
 import { CheckoutError } from "./domain";
 import type { CheckoutDatabase } from "./orders";
+import {
+  fulfillmentEnvironment,
+  requireStripeKeyMode,
+  type FulfillmentBindings,
+} from "./environment";
 
-export type CheckoutBindings = {
+export type CheckoutBindings = FulfillmentBindings & {
   PRINTIFY_API_TOKEN?: string;
   PRINTIFY_WEBHOOK_SECRET?: string;
-  PRINTIFY_SHOP_ID?: string;
   PRINTIFY_CURRENCY?: string;
   PRINTIFY_USD_TO_EUR_RATE?: string;
   STRIPE_SECRET_KEY?: string;
@@ -35,6 +39,7 @@ export function requireCheckoutConfig(
   stripeKey: string;
   origin: string;
   db: CheckoutDatabase;
+  allowExpress: boolean;
 } {
   if (
     !bindings.PRINTIFY_API_TOKEN ||
@@ -48,6 +53,8 @@ export function requireCheckoutConfig(
       503,
     );
   }
+  const environment = fulfillmentEnvironment(bindings);
+  requireStripeKeyMode(bindings.STRIPE_SECRET_KEY, environment);
   let configured: URL;
   try {
     configured = new URL(bindings.CHECKOUT_ORIGIN);
@@ -66,11 +73,12 @@ export function requireCheckoutConfig(
   }
   return {
     token: bindings.PRINTIFY_API_TOKEN,
-    shopId: bindings.PRINTIFY_SHOP_ID,
+    shopId: environment.shopId,
     currency: bindings.PRINTIFY_CURRENCY,
     usdToEurRate: bindings.PRINTIFY_USD_TO_EUR_RATE,
     stripeKey: bindings.STRIPE_SECRET_KEY,
     origin: configured.origin,
     db: bindings.CHECKOUT_DB,
+    allowExpress: environment.mode !== "test",
   };
 }

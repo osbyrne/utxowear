@@ -20,7 +20,7 @@ test("shirts and images load, and catalog search finds a product", async ({ page
       .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
       .toBeGreaterThan(0);
   }
-  await page.getByRole("link", { name: "Browse products" }).click();
+  await page.getByRole("link", { name: "Search products" }).click();
   await expect(page).toHaveURL(/\/products$/);
   await waitForStorefront(page);
   const name = await page.locator("article h3").first().innerText();
@@ -42,6 +42,10 @@ test("the bag retains quantities across pages and lets the buyer remove an item"
   await card.getByRole("button", { name: "Add to bag" }).click();
   await expect(page.getByRole("link", { name: "Shopping bag with 2 items" })).toBeVisible();
   await page.getByRole("link", { name: "utxowear home" }).click();
+  await expect(page.locator("#cart")).toHaveCount(0);
+  await page.getByRole("link", { name: /Shopping bag with/ }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await waitForStorefront(page);
   const bag = page.locator("#cart");
   await expect(bag).toContainText(name);
   await expect(bag.getByRole("spinbutton")).toHaveValue("2");
@@ -57,6 +61,10 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
   await page.goto("/products");
   await waitForStorefront(page);
   await page.locator("article").first().getByRole("button", { name: "Add to bag" }).click();
+  await expect(page.locator("#cart")).toHaveCount(0);
+  await page.getByRole("link", { name: /Shopping bag with/ }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await waitForStorefront(page);
   const bag = page.locator("#cart");
   const pay = bag.getByRole("button", { name: "Continue to secure payment" });
   await expect(pay).toBeDisabled();
@@ -95,7 +103,7 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
   await page.route("https://checkout.stripe.com/**", (route) =>
     route.fulfill({
       status: 302,
-      headers: { location: `${baseURL!.replace(/\/$/, "")}/?checkout=cancel` },
+      headers: { location: `${baseURL!.replace(/\/$/, "")}/cart?checkout=cancel` },
     }),
   );
   await pay.click();

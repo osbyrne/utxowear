@@ -9,6 +9,7 @@ import {
   validateAmount,
   validateItems,
 } from "./domain";
+import { reportStripeFailure, type StripeOperation } from "./stripe-diagnostics";
 
 export type CheckoutSnapshot = {
   shopId: string;
@@ -225,7 +226,7 @@ export async function createStripeSession(
 
 async function stripePost(
   secret: string,
-  path: string,
+  path: StripeOperation,
   params: URLSearchParams,
 ): Promise<Record<string, unknown>> {
   let response: Response;
@@ -239,15 +240,12 @@ async function stripePost(
       body: params,
       signal: AbortSignal.timeout(12_000),
     });
-  } catch (error) {
-    console.error(`[Checkout] Stripe ${path} request failed:`, error);
+  } catch {
+    await reportStripeFailure(path);
     throw new CheckoutError("Payment provider is temporarily unavailable.", 503);
   }
   if (!response.ok) {
-    console.error(
-      `[Checkout] Stripe ${path} returned HTTP ${response.status}:`,
-      (await response.text()).slice(0, 1000),
-    );
+    await reportStripeFailure(path, response);
     throw new CheckoutError("Payment provider or Stripe Tax is unavailable.", 503);
   }
   try {

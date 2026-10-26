@@ -7,7 +7,18 @@ import stylex from "@stylexjs/unplugin";
 export default defineConfig({
   output: "server",
   adapter: cloudflare({ imageService: "passthrough" }),
-  integrations: [react()],
+  integrations: [
+    react(),
+    {
+      name: "command-specific-dependency-cache",
+      hooks: {
+        "astro:config:setup": ({ command, updateConfig }) => {
+          // Builds must not replace dependency files used by a running dev server.
+          updateConfig({ vite: { cacheDir: `./node_modules/.vite-${command}` } });
+        },
+      },
+    },
+  ],
   vite: {
     plugins: [
       stylex.vite({

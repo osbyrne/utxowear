@@ -24,6 +24,7 @@
     "@astrojs/check": "^0.9.10",
     "@astrojs/cloudflare": "^14.3.4",
     "@astrojs/react": "^7.0.1",
+    "@chenglou/pretext": "^1.0.0",
     "@react-three/fiber": "^9.8.1",
     "@stylexjs/stylex": "^0.19.1",
     "@types/react": "^19.3.0",

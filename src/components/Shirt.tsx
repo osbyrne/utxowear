@@ -624,7 +624,9 @@ const styles = stylex.create({
   container: {
     position: "relative",
     width: "100%",
-    height: "clamp(28rem, 68vh, 46rem)",
+    height: { default: "auto", "@media (min-width: 640px)": "clamp(28rem, 68vh, 46rem)" },
+    aspectRatio: { default: "1 / 1.15", "@media (min-width: 640px)": "auto" },
+    touchAction: "none",
     overflow: "hidden",
     borderRadius: 0,
   },

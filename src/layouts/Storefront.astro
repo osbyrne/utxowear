@@ -7,6 +7,10 @@ import '../app.css';
 
 type Props = { title?: string };
 const { title = 'utxowear' } = Astro.props;
+const description = 'Clothing inspired by cryptography whitepapers.';
+const pageUrl = new URL(Astro.url.pathname, Astro.url);
+const previewImageUrl = new URL('/images/link-preview.png', Astro.url);
+const previewImageDescription = 'Black T-shirt in front of a cryptography paper.';
 ---
 
 <html lang="en">
@@ -19,6 +23,22 @@ const { title = 'utxowear' } = Astro.props;
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="utxowear" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={pageUrl} />
+    <meta property="og:image" content={previewImageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1055" />
+    <meta property="og:image:height" content="1055" />
+    <meta property="og:image:alt" content={previewImageDescription} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={previewImageUrl} />
+    <meta name="twitter:image:alt" content={previewImageDescription} />
     {import.meta.env.DEV && <link rel="stylesheet" href="/virtual:stylex.css" />}
     <script>
       if (import.meta.env.DEV) {

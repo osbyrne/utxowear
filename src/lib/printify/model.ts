@@ -25,6 +25,7 @@ export type StoreProduct = {
   id: string;
   title: string;
   description: string;
+  whitepaperUrl?: string;
   price: number;
   currency: string;
   checkoutUnavailableReason?: string;

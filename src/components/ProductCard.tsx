@@ -2,6 +2,8 @@ import { useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
+import Markdown from "react-markdown";
+import "../styles/product-description.css";
 
 const formatters = new Map<string, Intl.NumberFormat>();
 export function money(cents: number, currency: string) {
@@ -57,9 +59,18 @@ export default function ProductCard({
           </span>
         </div>
         {detail && (
-          <p {...stylex.props(styles.detailDescription)}>
-            {product.description || "Printify-made / unisex fit"}
-          </p>
+          <div className="product-description">
+            <Markdown skipHtml>{product.description || "Printify-made / unisex fit"}</Markdown>
+          </div>
+        )}
+        {detail && product.whitepaperUrl && (
+          <a
+            {...stylex.props(styles.primaryButton, styles.whitepaperButton)}
+            href={product.whitepaperUrl}
+            download
+          >
+            Download whitepaper
+          </a>
         )}
         {detail && purchasable && (
           <div {...stylex.props(styles.productControls)}>

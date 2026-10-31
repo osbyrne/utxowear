@@ -1,0 +1,28 @@
+.product-description {
+  margin-top: 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.product-description :where(p, ul, ol, blockquote, pre) {
+  margin-block: 0.75rem;
+}
+
+.product-description :where(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1rem 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.product-description :where(ul, ol) {
+  padding-inline-start: 1.5rem;
+}
+
+.product-description a {
+  text-decoration: underline;
+}
+
+.product-description pre {
+  overflow-x: auto;
+}

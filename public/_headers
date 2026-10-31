@@ -1,0 +1,4 @@
+/whitepapers/*
+  Content-Type: application/pdf
+  Content-Disposition: attachment
+  X-Content-Type-Options: nosniff

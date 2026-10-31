@@ -1,6 +1,7 @@
 import { isPublished } from "./publication";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
+import { NodeHtmlMarkdown } from "node-html-markdown";
 
 import {
   type PrintifyConfig,
@@ -129,6 +130,56 @@ export function plainText(value = ""): string {
     .trim();
 }
 
+function parseWhitepaperUrl(value: string): string | undefined {
+  const local = value.startsWith("/whitepapers/");
+  try {
+    const url = local ? new URL(value, "https://storefront.invalid") : new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      !/\.pdf$/i.test(url.pathname) ||
+      (local && !url.pathname.startsWith("/whitepapers/"))
+    ) {
+      return undefined;
+    }
+    return local ? `${url.pathname}${url.search}${url.hash}` : url.href;
+  } catch {
+    return undefined;
+  }
+}
+
+const descriptionConverter = new NodeHtmlMarkdown({ textReplace: [[/</g, "\\<"]] });
+
+export function parseProductDescription(
+  value = "",
+): Pick<StoreProduct, "description" | "whitepaperUrl"> {
+  const richText = /^\s*<(?:p|div|ul|ol|h[1-6]|table|blockquote|pre)\b/i.test(value);
+  const source = richText
+    ? value.replace(/<\/(?:p|div|li)\s*>|<br\s*\/?>/gi, "$&\n")
+    : value.replace(/<br\s*\/?>\s*(?=whitepaper:)/gi, "\n");
+  const lines = source.split(/\r?\n/);
+  const description: string[] = [];
+  let whitepaperUrl: string | undefined;
+
+  for (const line of lines) {
+    const text = plainText(line);
+    const match = /^whitepaper:\s*(\S+)$/i.exec(text);
+    const url = match && parseWhitepaperUrl(match[1].replace(/&amp;/gi, "&"));
+    if (url) {
+      whitepaperUrl ??= url;
+    } else {
+      description.push(line);
+    }
+  }
+
+  const content = description.join("\n").trim();
+  return {
+    description: richText ? descriptionConverter.translate(content).trim() : content,
+    whitepaperUrl,
+  };
+}
+
 export function normalizePublicProduct(
   product: PublicStoreProduct,
   _config: PrintifyConfig,
@@ -138,7 +189,7 @@ export function normalizePublicProduct(
   return {
     id: product.externalId ?? String(product.id),
     title: product.title,
-    description: plainText(product.description),
+    ...parseProductDescription(product.description),
     price: product.defaultVariant?.retailPrice ?? 0,
     currency: "USD",
     variants: [],
@@ -175,7 +226,7 @@ export function normalizeApiProduct(
   return {
     id: product.id,
     title: product.title,
-    description: plainText(product.description),
+    ...parseProductDescription(product.description),
     price: selected.price,
     currency: "USD",
     mockups: images.map((image) => image.src),

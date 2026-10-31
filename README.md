@@ -1,5 +1,13 @@
 # utxowear web site repository
 
+## Product whitepapers
+
+Add `Whitepaper: https://whitepapers.utxowear.com/bitcoin.pdf` as a separate line
+in a Printify product description to display a **Download whitepaper** button on
+its product page. Host your own PDF copy in Cloudflare R2, or deploy it with the
+website and use `Whitepaper: /whitepapers/bitcoin.pdf`.
+See [whitepaper setup](docs/whitepapers.md) for upload and publishing instructions.
+
 ## On-site checkout
 
 The storefront displays Printify products and enabled size/color variants. The

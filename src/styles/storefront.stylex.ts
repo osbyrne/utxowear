@@ -221,7 +221,6 @@ export const styles = stylex.create({
     gridTemplateColumns: { default: "1fr", "@media (min-width: 768px)": "1fr 1fr" },
   },
   detailTitle: { fontSize: "1.75rem", lineHeight: 1.2 },
-  detailDescription: { marginTop: "1rem", whiteSpace: "pre-wrap", lineHeight: 1.6 },
   card: {
     minWidth: 0,
     overflow: "hidden",
@@ -317,6 +316,12 @@ export const styles = stylex.create({
     lineHeight: "inherit",
     fontWeight: 700,
     cursor: { default: "pointer", ":disabled": "not-allowed" },
+  },
+  whitepaperButton: {
+    marginTop: "1rem",
+    color: theme.content,
+    backgroundColor: { default: theme.surface, ":hover": theme.background },
+    textDecoration: "none",
   },
   unavailable: { marginTop: "0.75rem", fontSize: "0.875rem", color: theme.muted },
   checkoutPanel: {

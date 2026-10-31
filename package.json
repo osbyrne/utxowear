@@ -33,8 +33,10 @@
     "astro": "^7.3.8",
     "cannon-es": "^0.20.0",
     "effect": "3.22.2",
+    "node-html-markdown": "^2.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
     "three": "^0.185.1",
     "typescript": "^6.0.3",
     "wrangler": "^4.152.0"

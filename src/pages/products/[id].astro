@@ -9,9 +9,13 @@ import { env } from 'cloudflare:workers';
 const products = await getPrintifyProducts(env);
 const product = products.find((candidate) => candidate.id === Astro.params.id);
 if (!product) Astro.response.status = 404;
+const previewImage = product?.mockups[0];
 ---
 
-<Storefront title={`${product?.title ?? 'Product not found'} — utxowear`}>
+<Storefront
+  title={`${product?.title ?? 'Product not found'} — utxowear`}
+  previewImage={product && previewImage ? { src: previewImage, alt: product.title } : undefined}
+>
   <main {...stylex.attrs(styles.main)}>
     <div {...stylex.attrs(styles.catalogHeading)}>
       <a href="/products" {...stylex.attrs(styles.productLink)}>← All products</a>

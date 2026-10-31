@@ -5,12 +5,15 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import '../app.css';
 
-type Props = { title?: string };
-const { title = 'utxowear' } = Astro.props;
+type Props = {
+  title?: string;
+  previewImage?: { src: string; alt: string };
+};
+const { title = 'utxowear', previewImage } = Astro.props;
 const description = 'Clothing inspired by cryptography whitepapers.';
 const pageUrl = new URL(Astro.url.pathname, Astro.url);
-const previewImageUrl = new URL('/images/link-preview.png', Astro.url);
-const previewImageDescription = 'Black T-shirt in front of a cryptography paper.';
+const previewImageUrl = new URL(previewImage?.src ?? '/images/link-preview.png', Astro.url);
+const previewImageDescription = previewImage?.alt ?? 'Black T-shirt in front of a cryptography paper.';
 ---
 
 <html lang="en">
@@ -30,9 +33,11 @@ const previewImageDescription = 'Black T-shirt in front of a cryptography paper.
     <meta property="og:description" content={description} />
     <meta property="og:url" content={pageUrl} />
     <meta property="og:image" content={previewImageUrl} />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1055" />
-    <meta property="og:image:height" content="1055" />
+    {!previewImage && <>
+      <meta property="og:image:type" content="image/png" />
+      <meta property="og:image:width" content="1055" />
+      <meta property="og:image:height" content="1055" />
+    </>}
     <meta property="og:image:alt" content={previewImageDescription} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />

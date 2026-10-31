@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import Markdown from "react-markdown";
 import { normalizeApiProduct, normalizePublicProduct, parseProductDescription } from "./parsing";
 import { normalizePrintifyConfig, type PrintifyProduct } from "./model";
 
@@ -22,17 +21,20 @@ test("extracts a direct PDF link from Printify rich text and decodes query separ
       '<p>Heavyweight cotton.</p><p>Whitepaper: <a href="https://papers.example/bitcoin.pdf?version=1&amp;download=1">https://papers.example/bitcoin.pdf?version=1&amp;download=1</a></p><p>Unisex fit.</p>',
     ),
   ).toEqual({
-    description: "Heavyweight cotton.\n\nUnisex fit.",
+    description: "<p>Heavyweight cotton.</p>\n<p>Unisex fit.</p>",
     whitepaperUrl: "https://papers.example/bitcoin.pdf?version=1&download=1",
   });
   expect(
     parseProductDescription("Heavyweight cotton.<br />whitepaper:&nbsp;/whitepapers/bitcoin.pdf"),
-  ).toEqual({ description: "Heavyweight cotton.", whitepaperUrl: "/whitepapers/bitcoin.pdf" });
+  ).toEqual({
+    description: "Heavyweight cotton.<br />",
+    whitepaperUrl: "/whitepapers/bitcoin.pdf",
+  });
 });
 
 test("preserves ordinary descriptions and does not infer a whitepaper from unrelated PDF links", () => {
   expect(parseProductDescription("<p>Cotton&nbsp;shirt</p><p>Unisex fit.</p>")).toEqual({
-    description: "Cotton shirt\n\nUnisex fit.",
+    description: "<p>Cotton shirt</p>\n<p>Unisex fit.</p>",
     whitepaperUrl: undefined,
   });
   expect(
@@ -77,7 +79,10 @@ test("includes whitepaper metadata in both authenticated and public product cata
     images: [{ src: "https://example.com/shirt.png", position: "front", is_default: true }],
     variants: [{ id: 1, title: "M", price: 2000, is_enabled: true, is_default: true, options: [] }],
   };
-  const metadata = { description: "Cotton shirt", whitepaperUrl: "/whitepapers/bitcoin.pdf" };
+  const metadata = {
+    description: "<p>Cotton shirt</p>",
+    whitepaperUrl: "/whitepapers/bitcoin.pdf",
+  };
   expect(normalizeApiProduct(product, config)).toMatchObject(metadata);
   expect(
     normalizePublicProduct(
@@ -87,47 +92,47 @@ test("includes whitepaper metadata in both authenticated and public product cata
   ).toMatchObject(metadata);
 });
 
-test("preserves authored Markdown paragraphs, emphasis, and lists", () => {
-  const description = "## Materials\n\n**Cotton** and *wool*.\n\n- Soft\n- Wash cold";
-  expect(parseProductDescription(description)).toEqual({ description, whitepaperUrl: undefined });
-});
-
-test("converts Printify rich text to Markdown and preserves whitepaper metadata", () => {
+test("preserves Printify HTML formatting and links with whitepaper metadata", () => {
   expect(
     parseProductDescription(
       '<h2>Materials</h2><p><strong>Cotton</strong> &amp; wool.</p><ul><li>Soft</li><li><em>Wash cold</em></li></ul><p><a href="https://example.com/care">Care guide</a></p><p>Whitepaper: /whitepapers/bitcoin.pdf</p>',
     ),
   ).toEqual({
     description:
-      "## Materials\n\n**Cotton** & wool.\n\n* Soft\n* _Wash cold_\n\n[Care guide](https://example.com/care)",
+      '<h2>Materials</h2><p><strong>Cotton</strong> &amp; wool.</p>\n<ul><li>Soft</li>\n<li><em>Wash cold</em></li>\n</ul><p><a href="https://example.com/care">Care guide</a></p>',
     whitepaperUrl: "/whitepapers/bitcoin.pdf",
   });
 });
 
 test.each([
-  ["Use `<span>` for labels.", "<p>Use <code>&lt;span&gt;</code> for labels.</p>"],
   [
-    "```html\n<p>Label</p>\n```",
-    '<pre><code class="language-html">&lt;p&gt;Label&lt;/p&gt;\n</code></pre>',
+    '<p><a href="https://drive.google.com/file/d/1JPb9ZrxCvvY9YMzQrLUJMtHv1-_WgmUc">Download the whitepaper</a></p>',
+    '<p><a href="https://drive.google.com/file/d/1JPb9ZrxCvvY9YMzQrLUJMtHv1-_WgmUc">Download the whitepaper</a></p>',
   ],
   ["<p>Size &lt;small&gt;, **literal**</p>", "<p>Size &lt;small&gt;, **literal**</p>"],
+  [
+    "<pre><code>&lt;p&gt;Label&lt;/p&gt;</code></pre>",
+    "<pre><code>&lt;p&gt;Label&lt;/p&gt;</code></pre>",
+  ],
 ])(
-  "renders literal code and rich-text characters without losing text: %s",
+  "renders HTML links and literal characters without Markdown conversion: %s",
   (source, expectedMarkup) => {
     const { description } = parseProductDescription(source);
-    expect(renderToStaticMarkup(createElement(Markdown, { skipHtml: true }, description))).toBe(
-      expectedMarkup,
-    );
+    expect(
+      renderToStaticMarkup(
+        createElement("div", { dangerouslySetInnerHTML: { __html: description } }),
+      ),
+    ).toBe(`<div>${expectedMarkup}</div>`);
   },
 );
 
-test("discards script and style contents during rich-text conversion", () => {
+test("removes executable content, attributes, and unsafe links from product HTML", () => {
   expect(
     parseProductDescription(
-      "<p>Cotton</p><script>alert(1)</script><style>body { display: none }</style>",
+      '<p onclick="alert(1)" style="color:red">Cotton</p><script>alert(1)</script><style>body { display: none }</style><a href="javascript:alert(1)">Unsafe</a><a href="java&#x73;cript:alert(1)">Encoded</a><iframe src="https://example.com"></iframe><img src="x" onerror="alert(1)">',
     ),
   ).toEqual({
-    description: "Cotton",
+    description: "<p>Cotton</p>\n<a>Unsafe</a><a>Encoded</a>",
     whitepaperUrl: undefined,
   });
 });

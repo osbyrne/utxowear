@@ -2,7 +2,6 @@ import { useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
-import Markdown from "react-markdown";
 import "../styles/product-description.css";
 
 const formatters = new Map<string, Intl.NumberFormat>();
@@ -59,9 +58,12 @@ export default function ProductCard({
           </span>
         </div>
         {detail && (
-          <div className="product-description">
-            <Markdown skipHtml>{product.description || "Printify-made / unisex fit"}</Markdown>
-          </div>
+          <div
+            className="product-description"
+            dangerouslySetInnerHTML={{
+              __html: product.description || "Printify-made / unisex fit",
+            }}
+          />
         )}
         {detail && product.whitepaperUrl && (
           <a

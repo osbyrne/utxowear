@@ -1,7 +1,7 @@
 import { isPublished } from "./publication";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { NodeHtmlMarkdown } from "node-html-markdown";
+import sanitizeHtml from "sanitize-html";
 
 import {
   type PrintifyConfig,
@@ -149,15 +149,10 @@ function parseWhitepaperUrl(value: string): string | undefined {
   }
 }
 
-const descriptionConverter = new NodeHtmlMarkdown({ textReplace: [[/</g, "\\<"]] });
-
 export function parseProductDescription(
   value = "",
 ): Pick<StoreProduct, "description" | "whitepaperUrl"> {
-  const richText = /^\s*<(?:p|div|ul|ol|h[1-6]|table|blockquote|pre)\b/i.test(value);
-  const source = richText
-    ? value.replace(/<\/(?:p|div|li)\s*>|<br\s*\/?>/gi, "$&\n")
-    : value.replace(/<br\s*\/?>\s*(?=whitepaper:)/gi, "\n");
+  const source = value.replace(/<\/(?:p|div|li)\s*>|<br\s*\/?>/gi, "$&\n");
   const lines = source.split(/\r?\n/);
   const description: string[] = [];
   let whitepaperUrl: string | undefined;
@@ -175,7 +170,11 @@ export function parseProductDescription(
 
   const content = description.join("\n").trim();
   return {
-    description: richText ? descriptionConverter.translate(content).trim() : content,
+    description: sanitizeHtml(content, {
+      allowedAttributes: { a: ["href", "title"] },
+      allowedSchemes: ["http", "https", "mailto"],
+      allowProtocolRelative: false,
+    }),
     whitepaperUrl,
   };
 }

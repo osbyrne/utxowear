@@ -24,6 +24,7 @@ export type StoreVariant = {
 export type StoreProduct = {
   id: string;
   title: string;
+  /** HTML sanitized when the Printify catalog is normalized. */
   description: string;
   whitepaperUrl?: string;
   price: number;

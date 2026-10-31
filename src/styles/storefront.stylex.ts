@@ -40,6 +40,27 @@ export const styles = stylex.create({
     gridTemplateColumns: "minmax(0, 1fr)",
   },
   preview: { minWidth: 0 },
+  shirtPreviewContainer: {
+    position: "relative",
+    width: "100%",
+    height: { default: "auto", "@media (min-width: 640px)": "clamp(28rem, 68vh, 46rem)" },
+    aspectRatio: { default: "1 / 1.15", "@media (min-width: 640px)": "auto" },
+    touchAction: "none",
+    overflow: "hidden",
+    borderRadius: 0,
+  },
+  shirtPreviewCanvas: { pointerEvents: "none", zIndex: 1 },
+  abstractBackground: {
+    position: "absolute",
+    inset: "1rem",
+    userSelect: "text",
+    cursor: "text",
+  },
+  abstractParagraph: {
+    display: "block",
+    width: "100%",
+    height: "100%",
+  },
   shop: {
     minWidth: 0,
     borderTopWidth: 1,

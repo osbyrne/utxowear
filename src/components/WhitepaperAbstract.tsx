@@ -6,6 +6,7 @@ import {
   prepareWithSegments,
 } from "@chenglou/pretext";
 import { useEffect, useState } from "react";
+import { styles } from "../styles/storefront.stylex";
 
 // Preserve the reference's line endings while scaling the paragraph as one unit.
 const ABSTRACT_LINES = [
@@ -67,13 +68,13 @@ export default function WhitepaperAbstract() {
   if (!layout) return null;
 
   return (
-    <div {...stylex.props(styles.background)}>
+    <div {...stylex.props(styles.abstractBackground)}>
       <svg
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={ABSTRACT_TEXT}
-        {...stylex.props(styles.paragraph)}
+        {...stylex.props(styles.abstractParagraph)}
       >
         <title>Bitcoin whitepaper abstract</title>
         {layout.lines.map((line, index) => (
@@ -105,17 +106,3 @@ export default function WhitepaperAbstract() {
     </div>
   );
 }
-
-const styles = stylex.create({
-  background: {
-    position: "absolute",
-    inset: "1rem",
-    userSelect: "text",
-    cursor: "text",
-  },
-  paragraph: {
-    display: "block",
-    width: "100%",
-    height: "100%",
-  },
-});

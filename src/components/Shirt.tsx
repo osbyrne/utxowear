@@ -29,6 +29,7 @@ import {
 } from "three";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { styles } from "../styles/storefront.stylex";
 import WhitepaperAbstract from "./WhitepaperAbstract";
 
 const PARTICLE_MASS = 0.12;
@@ -590,7 +591,7 @@ export default function Shirt() {
           event.preventDefault();
         }
       }}
-      {...stylex.props(styles.container)}
+      {...stylex.props(styles.shirtPreviewContainer)}
     >
       <WhitepaperAbstract />
       <Canvas
@@ -612,23 +613,10 @@ export default function Shirt() {
         dpr={[1, 1.75]}
         shadows
         gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
-        {...stylex.props(styles.canvas)}
+        {...stylex.props(styles.shirtPreviewCanvas)}
       >
         <Scene />
       </Canvas>
     </div>
   );
 }
-
-const styles = stylex.create({
-  container: {
-    position: "relative",
-    width: "100%",
-    height: { default: "auto", "@media (min-width: 640px)": "clamp(28rem, 68vh, 46rem)" },
-    aspectRatio: { default: "1 / 1.15", "@media (min-width: 640px)": "auto" },
-    touchAction: "none",
-    overflow: "hidden",
-    borderRadius: 0,
-  },
-  canvas: { pointerEvents: "none", zIndex: 1 },
-});

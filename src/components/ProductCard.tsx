@@ -3,6 +3,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
 import "../styles/product-description.css";
+import ProductGallery from "./ProductGallery";
 
 const formatters = new Map<string, Intl.NumberFormat>();
 export function money(cents: number, currency: string) {
@@ -31,27 +32,29 @@ export default function ProductCard({
     !product.checkoutUnavailableReason &&
     Boolean(variant);
 
-  const Tag = detail ? "article" : "a";
+  const productUrl = `/products/${encodeURIComponent(product.id)}`;
+  const images = [...new Set([...(variant?.image ? [variant.image] : []), ...product.mockups])];
   return (
-    <Tag
-      href={detail ? undefined : `/products/${encodeURIComponent(product.id)}`}
+    <article
       id={`product-${product.id}`}
       {...stylex.props(styles.card, styles.cardLink, detail && styles.productDetail)}
     >
-      <figure {...stylex.props(styles.figure)}>
-        <img
-          {...stylex.props(styles.image)}
-          src={variant?.image ?? product.mockups[0]}
-          alt={`${product.title}${variant ? ` — ${variant.title}` : ""}`}
-          loading="lazy"
-        />
-      </figure>
+      <ProductGallery
+        key={variantId ?? product.id}
+        title={product.title}
+        images={images}
+        href={detail ? undefined : productUrl}
+      />
       <div {...stylex.props(styles.productBody)}>
         <div {...stylex.props(styles.productHeading)}>
           {detail ? (
             <h1 {...stylex.props(styles.detailTitle)}>{product.title}</h1>
           ) : (
-            <h3 {...stylex.props(styles.productTitle)}>{product.title}</h3>
+            <h3 {...stylex.props(styles.productTitle)}>
+              <a href={productUrl} {...stylex.props(styles.productLink)}>
+                {product.title}
+              </a>
+            </h3>
           )}
           <span {...stylex.props(styles.price)}>
             {money(variant?.price ?? product.price, product.currency)}
@@ -122,6 +125,6 @@ export default function ProductCard({
           </p>
         )}
       </div>
-    </Tag>
+    </article>
   );
 }

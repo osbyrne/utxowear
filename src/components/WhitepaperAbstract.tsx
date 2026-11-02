@@ -84,7 +84,7 @@ export default function WhitepaperAbstract() {
             y={FONT_SIZE + index * LINE_HEIGHT}
             fontFamily={FONT_FAMILY}
             fontSize={FONT_SIZE}
-            fill="black"
+            fill="currentColor"
             style={{
               wordSpacing:
                 index < layout.lines.length - 1

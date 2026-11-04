@@ -1,13 +1,22 @@
 ---
 import Checkout from './Checkout';
-import type { StoreProduct } from '../lib/printify';
+import { getPrintifyProducts } from '../lib/printify';
+import { env } from 'cloudflare:workers';
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
 
 type Props = {
-  products: StoreProduct[];
   catalog?: boolean;
 };
 
-const { products, catalog = false } = Astro.props;
+const { catalog = false } = Astro.props;
+const products = await getPrintifyProducts(env).catch(() => null);
 ---
 
-<Checkout products={products} catalog={catalog} client:load />
+{products ? (
+  <Checkout products={products} catalog={catalog} client:load />
+) : (
+  <p role="alert" {...stylex.attrs(styles.error)}>
+    Products could not load. <a href={catalog ? '/products' : '/'}>Reload</a>
+  </p>
+)}

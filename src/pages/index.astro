@@ -2,21 +2,16 @@
 import * as stylex from '@stylexjs/stylex';
 import { styles } from '../styles/storefront.stylex';
 import Storefront from '../layouts/Storefront.astro';
-import Shirt from '../components/Shirt.tsx';
 import ProductList from '../components/ProductList.astro';
-import { getPrintifyProducts } from '../lib/printify';
-import { env } from 'cloudflare:workers';
-
-const products = await getPrintifyProducts(env);
+import ProductLoading from '../components/ProductLoading.astro';
 ---
 
 <Storefront>
   <main {...stylex.attrs(styles.main)}>
-    <section {...stylex.attrs(styles.preview)} aria-label="3D shirt preview">
-      <Shirt client:only="react" />
-    </section>
-    <section id="shop" {...stylex.attrs(styles.shop)} aria-label="Featured products">
-      <ProductList products={products} />
+    <section id="shop" aria-label="Featured products">
+      <ProductList server:defer>
+        <ProductLoading slot="fallback" reloadPath="/" />
+      </ProductList>
     </section>
   </main>
 </Storefront>

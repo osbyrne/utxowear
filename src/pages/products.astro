@@ -3,10 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { styles } from '../styles/storefront.stylex';
 import Storefront from '../layouts/Storefront.astro';
 import ProductList from '../components/ProductList.astro';
-import { getPrintifyProducts } from '../lib/printify';
-import { env } from 'cloudflare:workers';
-
-const products = await getPrintifyProducts(env);
+import ProductLoading from '../components/ProductLoading.astro';
 ---
 
 <Storefront title="Products — utxowear">
@@ -16,7 +13,9 @@ const products = await getPrintifyProducts(env);
         <a href="/" {...stylex.attrs(styles.productLink)}>← Back</a>
         <h1 id="products-title" {...stylex.attrs(styles.pageHeading)}>All products</h1>
       </div>
-      <ProductList products={products} catalog />
+      <ProductList catalog server:defer>
+        <ProductLoading slot="fallback" reloadPath="/products" />
+      </ProductList>
     </section>
   </main>
 </Storefront>

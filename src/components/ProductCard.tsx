@@ -2,7 +2,6 @@ import { useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
-import "../styles/product-description.css";
 import ProductGallery from "./ProductGallery";
 
 const formatters = new Map<string, Intl.NumberFormat>();

@@ -1,0 +1,42 @@
+---
+import * as stylex from '@stylexjs/stylex';
+import { styles } from '../styles/storefront.stylex';
+
+type Props = { detail?: boolean; reloadPath: string };
+const { detail = false, reloadPath } = Astro.props;
+---
+
+<product-loading {...stylex.attrs(styles.loadingContainer)}>
+  <div {...stylex.attrs(styles.loadingStatus)}>
+    <p role="status" data-loading-message>{detail ? 'Loading product details…' : 'Loading products…'}</p>
+    <a href={reloadPath}>Reload</a>
+  </div>
+  <div aria-hidden="true" {...stylex.attrs(detail ? styles.productDetail : styles.productGrid)}>
+    {Array.from({ length: detail ? 2 : 4 }, () => (
+      <div {...stylex.attrs(styles.productPlaceholder)}></div>
+    ))}
+  </div>
+  <noscript><p>Enable JavaScript to load {detail ? 'product details' : 'products'}.</p></noscript>
+</product-loading>
+
+<script>
+  class ProductLoading extends HTMLElement {
+    private timeout: number | undefined;
+
+    connectedCallback() {
+      this.timeout = window.setTimeout(() => {
+        const message = this.querySelector('[data-loading-message]');
+        if (message) {
+          message.textContent = 'Loading is taking longer than expected. Reload to try again.';
+          message.setAttribute('role', 'alert');
+        }
+      }, 15_000);
+    }
+
+    disconnectedCallback() {
+      window.clearTimeout(this.timeout);
+    }
+  }
+
+  if (!customElements.get('product-loading')) customElements.define('product-loading', ProductLoading);
+</script>

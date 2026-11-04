@@ -25,7 +25,12 @@ export default function ProductGallery({
   }
 
   return (
-    <div role="group" aria-roledescription="carousel" aria-label={`${title} mockups`}>
+    <div
+      {...stylex.props(styles.gallery)}
+      role="group"
+      aria-roledescription="carousel"
+      aria-label={`${title} mockups`}
+    >
       <div
         id={trackId}
         ref={track}
@@ -68,6 +73,7 @@ export default function ProductGallery({
               src={source}
               alt={`${title} — mockup ${index + 1} of ${images.length}`}
               loading="lazy"
+              decoding="async"
               draggable={false}
             />
           );
@@ -103,20 +109,6 @@ export default function ProductGallery({
           >
             <span aria-hidden="true">←</span>
           </button>
-          <input
-            {...stylex.props(styles.gallerySlider)}
-            type="range"
-            min="1"
-            max={images.length}
-            value={imageIndex + 1}
-            aria-label="Select mockup"
-            aria-valuetext={`Mockup ${imageIndex + 1} of ${images.length}`}
-            aria-controls={trackId}
-            onChange={(event) => selectImage(Number(event.target.value) - 1)}
-          />
-          <span {...stylex.props(styles.galleryCount)} aria-live="polite" aria-atomic="true">
-            {imageIndex + 1} / {images.length}
-          </span>
           <button
             {...stylex.props(styles.button, styles.galleryButton)}
             type="button"

@@ -29,6 +29,11 @@ const FONT_FAMILY = '"Times New Roman", Times, serif';
 const FONT_SIZE = 28;
 const LINE_HEIGHT = 36;
 const ABSTRACT_TEXT = ABSTRACT_LINES.join(" ");
+const INITIAL_ABSTRACT_LAYOUT = {
+  width: 1040,
+  height: ABSTRACT_LINES.length * LINE_HEIGHT,
+  lines: ABSTRACT_LINES.map((text) => ({ text, wordSpacing: 0 })),
+};
 
 function calculateAbstractLayout() {
   const font = `${FONT_SIZE}px ${FONT_FAMILY}`;
@@ -45,15 +50,22 @@ function calculateAbstractLayout() {
     width: line.width + (index === 0 ? labelWidthAdjustment : 0),
   }));
 
+  const width = Math.max(...measuredLines.map((line) => line.width));
   return {
-    lines: measuredLines,
-    width: Math.max(...measuredLines.map((line) => line.width)),
+    lines: measuredLines.map((line, index) => ({
+      text: line.text,
+      wordSpacing:
+        index < measuredLines.length - 1
+          ? (width - line.width) / (line.text.split(" ").length - 1)
+          : 0,
+    })),
+    width,
     height: lines.length * LINE_HEIGHT,
   };
 }
 
 export default function WhitepaperAbstract() {
-  const [layout, setLayout] = useState<ReturnType<typeof calculateAbstractLayout> | null>(null);
+  const [layout, setLayout] = useState(INITIAL_ABSTRACT_LAYOUT);
 
   useEffect(() => {
     let disposed = false;
@@ -64,8 +76,6 @@ export default function WhitepaperAbstract() {
       disposed = true;
     };
   }, []);
-
-  if (!layout) return null;
 
   return (
     <div {...stylex.props(styles.abstractBackground)}>
@@ -85,12 +95,7 @@ export default function WhitepaperAbstract() {
             fontFamily={FONT_FAMILY}
             fontSize={FONT_SIZE}
             fill="currentColor"
-            style={{
-              wordSpacing:
-                index < layout.lines.length - 1
-                  ? (layout.width - line.width) / (line.text.split(" ").length - 1)
-                  : 0,
-            }}
+            style={{ wordSpacing: line.wordSpacing }}
           >
             {index === 0 ? (
               <>

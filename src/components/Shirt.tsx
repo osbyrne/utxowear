@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, events, type ThreeEvent, useFrame, useLoader } from "@react-three/fiber";
 import {
   Body,
@@ -30,7 +30,6 @@ import {
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { styles } from "../styles/storefront.stylex";
-import WhitepaperAbstract from "./WhitepaperAbstract";
 
 const PARTICLE_MASS = 0.12;
 const FIXED_TIME_STEP = 1 / 60;
@@ -579,44 +578,30 @@ function Scene() {
   );
 }
 
-export default function Shirt() {
-  const container = useRef<HTMLDivElement>(null);
-
+export default function Shirt({ container }: { container: RefObject<HTMLDivElement | null> }) {
   return (
-    <div
-      id="canvas-container"
-      ref={container}
-      onPointerDown={(event) => {
-        if (event.target instanceof Element && event.target.hasPointerCapture(event.pointerId)) {
-          event.preventDefault();
-        }
-      }}
-      {...stylex.props(styles.shirtPreviewContainer)}
+    <Canvas
+      eventSource={container}
+      events={(store) => ({
+        ...events(store),
+        compute: (event, state) => {
+          const bounds = state.gl.domElement.getBoundingClientRect();
+          state.pointer.set(
+            ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+            -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+          );
+          state.raycaster.setFromCamera(state.pointer, state.camera);
+        },
+      })}
+      aria-label="Interactive 3D T-shirt hanging on a black hanger. Drag the fabric to move it."
+      role="img"
+      camera={{ position: [0, 0, 9.4], fov: 37, near: 0.1, far: 50 }}
+      dpr={[1, 1.75]}
+      shadows
+      gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+      {...stylex.props(styles.shirtPreviewCanvas)}
     >
-      <WhitepaperAbstract />
-      <Canvas
-        eventSource={container}
-        events={(store) => ({
-          ...events(store),
-          compute: (event, state) => {
-            const bounds = state.gl.domElement.getBoundingClientRect();
-            state.pointer.set(
-              ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-              -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-            );
-            state.raycaster.setFromCamera(state.pointer, state.camera);
-          },
-        })}
-        aria-label="Interactive 3D T-shirt hanging on a black hanger. Drag the fabric to move it."
-        role="img"
-        camera={{ position: [0, 0, 9.4], fov: 37, near: 0.1, far: 50 }}
-        dpr={[1, 1.75]}
-        shadows
-        gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
-        {...stylex.props(styles.shirtPreviewCanvas)}
-      >
-        <Scene />
-      </Canvas>
-    </div>
+      <Scene />
+    </Canvas>
   );
 }

@@ -8,7 +8,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "https://utxowear.osbyrne.workers.dev",
+    baseURL: process.env.E2E_BASE_URL ?? "https://utxowear.com",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

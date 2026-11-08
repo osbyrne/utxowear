@@ -17,6 +17,11 @@ All target `https://utxowear.osbyrne.workers.dev/api/printify-webhook` and use
 the Worker secret `PRINTIFY_WEBHOOK_SECRET`. Unsigned requests returned HTTP 400.
 The signature is verified over the raw request body using HMAC SHA-256.
 
+On 8 November 2026, all three subscriptions moved to
+`https://utxowear.com/api/printify-webhook`. Their signing secrets were retained.
+Both webhook paths on the custom domain reject unsigned requests. The evidence
+below describes the earlier publication test, not a new publication run.
+
 End-to-end verification used temporary product `6adb8b6a8c5ce03a880d9ad7`:
 
 1. A newly created draft stayed absent from the live catalog.

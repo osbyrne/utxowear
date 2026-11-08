@@ -95,11 +95,11 @@ Stripe Checkout uses dashboard-managed dynamic payment methods.
 `simulate`; an unrecognized value fails closed. Local development and staging
 should normally use `simulate`.
 
-| Configuration | Stripe API key and signed events | Printify catalog and shipping | Paid-session fulfillment |
-| --- | --- | --- | --- |
-| `simulate` (default) | Test mode only | `PRINTIFY_SHOP_ID`, or the existing single-shop fallback | D1 row with `status='simulated'`, no Printify order or production |
-| `production` | Live mode only | Required `PRINTIFY_SHOP_ID` | Real order in that production shop; its approval settings apply |
-| `test` (explicit opt-in) | Test mode only | Required `PRINTIFY_TEST_SHOP_ID`, distinct from `PRINTIFY_SHOP_ID` | Real order in the separate test shop; Express is blocked |
+| Configuration            | Stripe API key and signed events | Printify catalog and shipping                                      | Paid-session fulfillment                                          |
+| ------------------------ | -------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `simulate` (default)     | Test mode only                   | `PRINTIFY_SHOP_ID`, or the existing single-shop fallback           | D1 row with `status='simulated'`, no Printify order or production |
+| `production`             | Live mode only                   | Required `PRINTIFY_SHOP_ID`                                        | Real order in that production shop; its approval settings apply   |
+| `test` (explicit opt-in) | Test mode only                   | Required `PRINTIFY_TEST_SHOP_ID`, distinct from `PRINTIFY_SHOP_ID` | Real order in the separate test shop; Express is blocked          |
 
 Both the signed Stripe event and Checkout Session must contain matching boolean
 `livemode` values for the configured mode. Missing, inconsistent, or wrong-mode
@@ -135,12 +135,9 @@ Printify credentials, and production D1. Signed sandbox events are rejected and
 cannot create orders. Real customer orders may keep automatic approval enabled;
 the application does not change Printify approval settings.
 
-**Before deploying this guard to an existing live store, explicitly configure
-`FULFILLMENT_MODE=production` on the Worker.** Otherwise the safe default rejects
-live checkout creation and fulfillment. For example, run
-`bunx wrangler secret put FULFILLMENT_MODE` and enter `production`, then deploy.
-Local `.env` files do not configure deployed Worker secrets. Apply D1 migrations
-and register both completion events described in Deployment.
+The `production` Wrangler environment sets `FULFILLMENT_MODE=production`.
+The `preview` environment sets `simulate`. Local `.env` files do not configure
+deployed Worker secrets. Register both completion events described in Deployment.
 
 ### Deliberate Printify fulfillment tests
 
@@ -180,19 +177,17 @@ over `.env`; use one, not both, and restart after changing modes or shop IDs.
 
 ### Deployment
 
-Run `bun run build` and `bunx wrangler deploy` from an authenticated Cloudflare
-account. Wrangler provisions the D1 binding `CHECKOUT_DB` on first deployment;
-record the generated database ID in `wrangler.jsonc` and apply
-`bun run migrate:remote` before taking payments. Set secrets with
-`bunx wrangler secret put PRINTIFY_API_TOKEN`, `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, and `CHECKOUT_ORIGIN`, and set
-`FULFILLMENT_MODE=production`, `PRINTIFY_SHOP_ID`, `PRINTIFY_CURRENCY`, and (for EUR) `PRINTIFY_USD_TO_EUR_RATE`
-for this Worker. Register
-`https://YOUR-DOMAIN/api/stripe-webhook` in Stripe with the
-`checkout.session.completed` and `checkout.session.async_payment_succeeded`
-events; its signing secret must match the deployed
-`STRIPE_WEBHOOK_SECRET`. Configure `CHECKOUT_ORIGIN` as the exact public HTTPS
-origin. Apply future migrations before deploying code that depends on them.
+Development uses `trunk`. Each verified trunk commit deploys the `preview`
+Worker at `https://preview.utxowear.com`. Production at `https://utxowear.com`
+deploys only from a `vX.Y.Z` tag whose commit belongs to `origin/trunk`.
+GitHub Actions runs the checks, builds for the selected environment, verifies
+the generated bindings, applies D1 migrations, and deploys that build.
+
+See [release and deployment instructions](docs/deployment.md) for provider setup,
+Cloudflare Access, environment secrets, releases, and recovery.
+The environment-specific `CHECKOUT_ORIGIN`, fulfillment mode, catalog settings,
+and resource IDs are version-controlled in `wrangler.jsonc`. Worker secrets
+remain in Cloudflare. Local development uses its own D1 and KV storage.
 
 Failed or uncertain fulfillment attempts require manual reconciliation against
 the Stripe Session ID (Printify external order ID). Do not retry an ambiguous
@@ -239,16 +234,19 @@ are preserved; drafts are not automatically published during migration.
 
 ## Commands
 
-| Command                  | Action                                                          |
-| :----------------------- | :-------------------------------------------------------------- |
-| `bun dev`                | Generate Worker types and start the Astro/Cloudflare dev server |
-| `bun run migrate:local`  | Apply checkout ledger migration to local D1                     |
-| `bun run migrate:remote` | Apply checkout ledger migration to production D1                |
-| `bun check`              | Type-check Astro and TypeScript                                 |
-| `bun test`               | Run the focused runtime integration tests                       |
-| `bun run test:e2e`       | Run three browser smoke tests against the live store             |
-| `bun run build`          | Build the Worker into `dist/`                                   |
-| `bun run deploy`         | Build and deploy the Worker                                     |
+| Command                             | Action                                                          |
+| :---------------------------------- | :-------------------------------------------------------------- |
+| `bun dev`                           | Generate Worker types and start the Astro/Cloudflare dev server |
+| `bun run migrate:local`             | Apply checkout ledger migration to local D1                     |
+| `bun run migrate:preview`           | Apply checkout ledger migrations to preview D1                  |
+| `bun run migrate:production`        | Apply checkout ledger migrations to production D1               |
+| `bun check`                         | Type-check Astro and TypeScript                                 |
+| `bun test`                          | Run the focused runtime integration tests                       |
+| `bun run test:e2e`                  | Run three browser smoke tests against the live store            |
+| `bun run build`                     | Build the Worker into `dist/`                                   |
+| `bun test ./scripts/deploy.test.ts` | Verify deployment and release restrictions                      |
+| `bun run deploy:preview`            | Build, migrate, and deploy a clean trunk checkout to preview    |
+| `bun run deploy:production`         | Build, migrate, and deploy a clean release tag to production    |
 
 ## Styling
 
@@ -281,8 +279,8 @@ Delivery uses the Resend HTTP API directly, without an SDK dependency. Configure
 - `CONTACT_FROM_EMAIL`: a sender address on a domain verified in Resend.
 
 For local development, set these in your ignored local environment file (see the
-example files). For production, set them with `bunx wrangler secret put RESEND_API_KEY`
-and `bunx wrangler secret put CONTACT_FROM_EMAIL`, then deploy. Never use `PUBLIC_`
+example files). For production, set them with `bunx wrangler secret put RESEND_API_KEY --env production`
+and `bunx wrangler secret put CONTACT_FROM_EMAIL --env production`, then deploy. Never use `PUBLIC_`
 variables for these settings. Missing configuration returns a generic unavailable
 message and preserves the visitor's form. Provider errors are not exposed.
 The sender's email is used as Reply-To, so replies go to the visitor.

@@ -1,18 +1,62 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "utxowear",
-  "keep_vars": true,
-  "kv_namespaces": [{ "binding": "SESSION", "id": "b9112fa2e69544598bbf6ee6a7efdd97" }],
+  "name": "utxowear-local",
+  "account_id": "7512ee540130ed1366a5034ae53d3c58",
+  "keep_vars": false,
+  "workers_dev": false,
+  "preview_urls": false,
   "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2025-12-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "binding": "ASSETS", "directory": "./dist" },
+  "kv_namespaces": [{ "binding": "SESSION" }],
   "d1_databases": [
     {
       "binding": "CHECKOUT_DB",
-      "database_name": "utxowear-checkout",
-      "database_id": "586d6638-c643-4512-85f0-e4255f6ee316",
+      "database_name": "utxowear-checkout-local",
       "migrations_dir": "migrations",
     },
   ],
+  "env": {
+    "preview": {
+      "name": "utxowear-preview",
+      "routes": [{ "pattern": "preview.utxowear.com", "custom_domain": true }],
+      "vars": {
+        "CHECKOUT_ORIGIN": "https://preview.utxowear.com",
+        "FULFILLMENT_MODE": "simulate",
+        "PRINTIFY_SHOP_ID": "12336149",
+        "PRINTIFY_CURRENCY": "USD",
+        "PRINTIFY_STORE_URL": "https://utxowear.printify.me/",
+      },
+      "kv_namespaces": [{ "binding": "SESSION", "id": "f34b298aa6a54322b1c4be4dcde803d3" }],
+      "d1_databases": [
+        {
+          "binding": "CHECKOUT_DB",
+          "database_name": "utxowear-checkout-preview",
+          "database_id": "0b7741d3-118b-45b8-8bc3-a5045fcf906d",
+          "migrations_dir": "migrations",
+        },
+      ],
+    },
+    "production": {
+      "name": "utxowear",
+      "routes": [{ "pattern": "utxowear.com", "custom_domain": true }],
+      "vars": {
+        "CHECKOUT_ORIGIN": "https://utxowear.com",
+        "FULFILLMENT_MODE": "production",
+        "PRINTIFY_SHOP_ID": "12336149",
+        "PRINTIFY_CURRENCY": "USD",
+        "PRINTIFY_STORE_URL": "https://utxowear.printify.me/",
+      },
+      "kv_namespaces": [{ "binding": "SESSION", "id": "b9112fa2e69544598bbf6ee6a7efdd97" }],
+      "d1_databases": [
+        {
+          "binding": "CHECKOUT_DB",
+          "database_name": "utxowear-checkout",
+          "database_id": "586d6638-c643-4512-85f0-e4255f6ee316",
+          "migrations_dir": "migrations",
+        },
+      ],
+    },
+  },
 }

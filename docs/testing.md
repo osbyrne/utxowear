@@ -4,6 +4,10 @@ Use `bun run check` for TypeScript/Astro checks and `bun test` for the focused
 runtime regressions. `bunfig.toml` keeps Bun's runner scoped to `src/lib`, so
 it does not try to execute Playwright's browser specs.
 
+Run `bun test ./scripts/deploy.test.ts` for deployment restrictions. These tests
+use a temporary Git repository to reject unmerged release tags, malformed
+versions, uncommitted changes, and builds targeting the wrong environment.
+
 The runtime suite covers risks that static typing cannot establish:
 
 - Published products across API pagination; drafts and failed/empty catalogs
@@ -32,11 +36,15 @@ bun run test:e2e
 ```
 
 These are three browser smoke tests, defaulting to
-`https://utxowear.osbyrne.workers.dev`. To target a local or staging server:
+`https://utxowear.com`. To target a local server:
 
 ```sh
 E2E_BASE_URL=http://localhost:4321 bun run test:e2e
 ```
+
+The preview deployment requires Cloudflare Access authentication. This test
+runner creates fresh browser contexts without an Access session. Use a local
+server or the public production domain for these smoke tests.
 
 The target must have published products and working Printify shipping
 configuration. Tests use separate fresh browser contexts and require no API keys

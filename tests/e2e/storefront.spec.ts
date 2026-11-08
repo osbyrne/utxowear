@@ -60,6 +60,7 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
 }) => {
   await page.goto("/products");
   await waitForStorefront(page);
+  await page.locator("article").first().getByRole("heading").getByRole("link").click();
   await page.locator("article").first().getByRole("button", { name: "Add to bag" }).click();
   await expect(page.locator("#cart")).toHaveCount(0);
   await page.getByRole("link", { name: /Shopping bag with/ }).click();
@@ -73,12 +74,12 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
     last_name: "Verification",
     email: "checkout-test@example.com",
     phone: "+33142000000",
-    country: "FR",
     address1: "5 Avenue Anatole France",
     city: "Paris",
     zip: "75007",
   }))
     await bag.locator(`input[name="${name}"]`).fill(value);
+  await bag.getByRole("combobox", { name: "Country", exact: true }).selectOption("FR");
   const response = page.waitForResponse(
     (r) => new URL(r.url()).pathname === "/api/shipping" && r.request().method() === "POST",
   );
@@ -115,4 +116,70 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
   await expect(page).toHaveURL(/checkout=cancel/);
   await expect(page.locator("#cart")).toContainText("Checkout was canceled");
   await expect(page.getByRole("link", { name: "Shopping bag with 1 item" })).toBeVisible();
+});
+
+test("Chrome autofill selects a valid country and country changes invalidate shipping", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/products");
+  await waitForStorefront(page);
+  await page.locator("article").first().getByRole("heading").getByRole("link").click();
+  await page.locator("article").first().getByRole("button", { name: "Add to bag" }).click();
+  await page.getByRole("link", { name: /Shopping bag with/ }).click();
+  await waitForStorefront(page);
+
+  const country = page.getByRole("combobox", { name: "Country", exact: true });
+  await expect(country).toHaveValue("");
+  expect(await country.evaluate((element) => element.matches(":invalid"))).toBe(true);
+  await expect(country.locator('option[value="ZZ"]')).toHaveCount(0);
+  await country.focus();
+  await page.keyboard.type("France");
+  await expect(country).toHaveValue("FR");
+  await country.selectOption("");
+
+  const session = await context.newCDPSession(page);
+  try {
+    const { root } = await session.send("DOM.getDocument");
+    const { nodeId } = await session.send("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: 'input[name="first_name"]',
+    });
+    const { node } = await session.send("DOM.describeNode", { nodeId });
+    await session.send("Autofill.trigger", {
+      fieldId: node.backendNodeId,
+      address: {
+        fields: [
+          { name: "NAME_FIRST", value: "Address" },
+          { name: "NAME_LAST", value: "Verification" },
+          { name: "EMAIL_ADDRESS", value: "checkout-test@example.com" },
+          { name: "PHONE_HOME_WHOLE_NUMBER", value: "+33142000000" },
+          { name: "ADDRESS_HOME_COUNTRY", value: "France" },
+          { name: "ADDRESS_HOME_STREET_ADDRESS", value: "5 Avenue Anatole France" },
+          { name: "ADDRESS_HOME_CITY", value: "Paris" },
+          { name: "ADDRESS_HOME_ZIP", value: "75007" },
+        ],
+      },
+    });
+    await expect(country).toHaveValue("FR");
+    await page.route("**/api/shipping", (route) =>
+      route.fulfill({
+        json: {
+          currency: "USD",
+          subtotal: 2000,
+          options: [{ method: 1, label: "Standard", price: 500, currency: "USD" }],
+        },
+      }),
+    );
+    const request = page.waitForRequest("**/api/shipping");
+    await page.getByRole("button", { name: "Get shipping rates" }).click();
+    expect((await request).postDataJSON().address.country).toBe("FR");
+    const payment = page.getByRole("button", { name: "Continue to secure payment" });
+    await expect(payment).toBeEnabled();
+    await country.selectOption("GB");
+    await expect(country).toHaveValue("GB");
+    await expect(payment).toBeDisabled();
+  } finally {
+    await session.detach();
+  }
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Address, type Quote } from "./domain";
+import { validateAddress, type Address, type Quote } from "./domain";
 import { Database } from "bun:sqlite";
 import { usdPricing } from "../pricing";
 import { claimOrder, markOrderCreated, markOrderUncertain, type CheckoutDatabase } from "./orders";
@@ -19,6 +19,18 @@ const address: Address = {
   zip: "94612",
 };
 const item = { productId: "5b05842f3921c9547531758d", variantId: 12359, quantity: 2 };
+
+test.each(["ZZ", "AA", "UK", "France"])("rejects invalid shipping country %s", (country) => {
+  expect(() => validateAddress({ ...address, country })).toThrow("Invalid shipping country");
+});
+
+test.each(["US", "FR", "GB", "AX", "BQ", " fr "])(
+  "accepts and normalizes shipping country %s",
+  (country) => {
+    expect(validateAddress({ ...address, country }).country).toBe(country.trim().toUpperCase());
+  },
+);
+
 const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;

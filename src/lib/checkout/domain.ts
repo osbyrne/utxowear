@@ -1,3 +1,5 @@
+import { isCountryCode } from "../countries";
+
 export class CheckoutError extends Error {
   constructor(
     message: string,
@@ -80,7 +82,7 @@ export function validateAddress(value: unknown): Address {
     if (!address[field]) throw new CheckoutError(`Missing address field: ${field}.`);
   }
   address.country = address.country.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(address.country) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) {
+  if (!isCountryCode(address.country) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) {
     throw new CheckoutError("Invalid shipping country or email.");
   }
   return address;

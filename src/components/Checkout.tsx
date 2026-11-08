@@ -6,6 +6,7 @@ import ProductCard from "./ProductCard";
 import { money } from "./ProductCard";
 import { styles } from "../styles/storefront.stylex";
 import { validateAmount, type Currency } from "../lib/checkout/domain";
+import { countryCodes } from "../lib/countries";
 
 type CartLine = { productId: string; variantId: number; quantity: number };
 type Address = {
@@ -28,7 +29,7 @@ const emptyAddress: Address = {
   last_name: "",
   email: "",
   phone: "",
-  country: "US",
+  country: "",
   region: "",
   address1: "",
   address2: "",
@@ -117,13 +118,18 @@ const addressFields: {
   { key: "last_name", label: "Last name", autoComplete: "family-name", required: true },
   { key: "email", label: "Email", autoComplete: "email", type: "email", required: true },
   { key: "phone", label: "Phone", autoComplete: "tel", type: "tel", required: true },
-  { key: "country", label: "Country (2-letter code)", autoComplete: "country", required: true },
+  { key: "country", label: "Country", autoComplete: "country", required: true },
   { key: "region", label: "State / province", autoComplete: "address-level1" },
   { key: "address1", label: "Street address", autoComplete: "address-line1", required: true },
   { key: "address2", label: "Apartment / suite", autoComplete: "address-line2" },
   { key: "city", label: "City", autoComplete: "address-level2", required: true },
   { key: "zip", label: "Postal code", autoComplete: "postal-code", required: true },
 ];
+
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
+const countryOptions = countryCodes
+  .map((code) => ({ code, name: countryNames.of(code) ?? code }))
+  .sort((first, second) => first.name.localeCompare(second.name, "en"));
 
 export default function Checkout({
   products,
@@ -491,26 +497,45 @@ export default function Checkout({
                   {addressFields.map((field) => (
                     <label key={field.key} {...stylex.props(styles.field)}>
                       <span>{field.label}</span>
-                      <input
-                        {...stylex.props(styles.input)}
-                        name={field.key}
-                        type={field.type ?? "text"}
-                        autoComplete={field.autoComplete}
-                        value={address[field.key]}
-                        required={field.required}
-                        pattern={field.key === "country" ? "[A-Za-z]{2}" : undefined}
-                        maxLength={field.key === "country" ? 2 : undefined}
-                        onChange={(event) => {
-                          setAddress((previous) => ({
-                            ...previous,
-                            [field.key]:
-                              field.key === "country"
-                                ? event.target.value.toUpperCase()
-                                : event.target.value,
-                          }));
-                          invalidateQuote();
-                        }}
-                      />
+                      {field.key === "country" ? (
+                        <select
+                          {...stylex.props(styles.input)}
+                          name="country"
+                          autoComplete="country"
+                          value={address.country}
+                          required
+                          onChange={(event) => {
+                            setAddress((previous) => ({
+                              ...previous,
+                              country: event.target.value,
+                            }));
+                            invalidateQuote();
+                          }}
+                        >
+                          <option value="">Select a country</option>
+                          {countryOptions.map(({ code, name }) => (
+                            <option key={code} value={code}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          {...stylex.props(styles.input)}
+                          name={field.key}
+                          type={field.type ?? "text"}
+                          autoComplete={field.autoComplete}
+                          value={address[field.key]}
+                          required={field.required}
+                          onChange={(event) => {
+                            setAddress((previous) => ({
+                              ...previous,
+                              [field.key]: event.target.value,
+                            }));
+                            invalidateQuote();
+                          }}
+                        />
+                      )}
                     </label>
                   ))}
                 </div>

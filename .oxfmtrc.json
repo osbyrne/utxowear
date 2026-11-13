@@ -2,10 +2,11 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "ignorePatterns": [
     "dist/**",
-    ".astro/**",
+    ".tanstack/**",
     "public/**",
     "worker-configuration.d.ts",
     "bun.lock",
-    "package-lock.json"
+    "package-lock.json",
+    "src/routeTree.gen.ts"
   ]
 }

@@ -120,7 +120,7 @@ async function deploy(): Promise<void> {
   verifyDeploymentArtifact(environment, artifact);
   await run(["bun", "run", `migrate:${environment}`]);
   const deploymentEnvironment: NodeJS.ProcessEnv = { ...childEnvironment };
-  // Astro already resolved the named environment into this generated configuration.
+  // The Vite build already resolved the named deployment environment.
   delete deploymentEnvironment.CLOUDFLARE_ENV;
   await run(
     [

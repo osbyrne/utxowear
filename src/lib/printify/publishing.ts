@@ -88,7 +88,7 @@ export async function handlePublishingEvent(
   } else {
     endpoint = "publishing_succeeded";
     body = {
-      external: { id: resource.id, handle: `${config.origin}/products#product-${resource.id}` },
+      external: { id: resource.id, handle: `${config.origin}/products/${resource.id}` },
     };
   }
   const response = await fetch(`${base}/${endpoint}.json`, {

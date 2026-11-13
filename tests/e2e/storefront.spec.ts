@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function waitForStorefront(page: Page) {
-  // Astro renders the form before React attaches its input handlers.
-  await expect(page.locator('astro-island[component-url*="Checkout"]:not([ssr])')).toBeAttached();
+  await expect(page.locator('[data-storefront-ready="true"]')).toBeAttached();
 }
 
 // These tests can run against production: external catalog/shipping reads are real,
@@ -11,35 +10,38 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/checkout", (route) => route.abort());
 });
 
-test("shirts and images load, and catalog search finds a product", async ({ page }) => {
+test("the homepage lists products without search or filter controls", async ({ page }) => {
   await page.goto("/");
   await waitForStorefront(page);
   await expect(page.locator("article").first()).toBeVisible();
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Search products" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Clear filters", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "More", exact: true })).toHaveCount(0);
   for (const image of await page.locator("article img").all()) {
     await expect
       .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
       .toBeGreaterThan(0);
   }
-  await page.getByRole("link", { name: "Search products" }).click();
-  await expect(page).toHaveURL(/\/products$/);
-  await waitForStorefront(page);
-  const name = await page.locator("article h3").first().innerText();
-  await page.getByRole("searchbox", { name: "Search", exact: true }).fill(name);
-  await expect(page.locator("article")).toHaveCount(1);
-  await expect(page.locator("article h3")).toHaveText(name);
-  await page.getByRole("searchbox", { name: "Search", exact: true }).fill("no-such-shirt-e2e");
-  await expect(page.locator("article")).toHaveCount(0);
+});
+
+test("the former catalog address redirects to the homepage", async ({ request }) => {
+  const response = await request.get("/products", { maxRedirects: 0 });
+  expect(response.status()).toBe(301);
+  expect(response.headers().location).toBe("/");
 });
 
 test("the bag retains quantities across pages and lets the buyer remove an item", async ({
   page,
 }) => {
-  await page.goto("/products");
+  await page.goto("/");
   await waitForStorefront(page);
   const card = page.locator("article").first();
   const name = await card.getByRole("heading").innerText();
-  await card.getByRole("spinbutton", { name: "Quantity" }).fill("2");
-  await card.getByRole("button", { name: "Add to bag" }).click();
+  await card.getByRole("heading").getByRole("link").click();
+  await page.getByRole("spinbutton", { name: "Quantity" }).fill("2");
+  await page.getByRole("button", { name: "Add to bag", exact: true }).click();
   await expect(page.getByRole("link", { name: "Shopping bag with 2 items" })).toBeVisible();
   await page.getByRole("link", { name: "utxowear home" }).click();
   await expect(page.locator("#cart")).toHaveCount(0);
@@ -58,7 +60,7 @@ test("a real shipping quote enables USD checkout and cancellation preserves the 
   page,
   baseURL,
 }) => {
-  await page.goto("/products");
+  await page.goto("/");
   await waitForStorefront(page);
   await page.locator("article").first().getByRole("heading").getByRole("link").click();
   await page.locator("article").first().getByRole("button", { name: "Add to bag" }).click();
@@ -122,7 +124,7 @@ test("Chrome autofill selects a valid country and country changes invalidate shi
   page,
   context,
 }) => {
-  await page.goto("/products");
+  await page.goto("/");
   await waitForStorefront(page);
   await page.locator("article").first().getByRole("heading").getByRole("link").click();
   await page.locator("article").first().getByRole("button", { name: "Add to bag" }).click();

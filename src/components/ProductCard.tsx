@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
@@ -18,9 +19,12 @@ export default function ProductCard({
   product,
   onAdd,
   detail = false,
+  drawable = false,
 }: {
   product: StoreProduct;
   detail?: boolean;
+  /** Prepare images for drawing into a canvas, as the Bend catalog does. */
+  drawable?: boolean;
   onAdd: (product: StoreProduct, variant: StoreVariant, quantity: number) => void;
 }) {
   const [variantId, setVariantId] = useState(product.defaultVariantId ?? product.variants[0]?.id);
@@ -31,7 +35,6 @@ export default function ProductCard({
     !product.checkoutUnavailableReason &&
     Boolean(variant);
 
-  const productUrl = `/products/${encodeURIComponent(product.id)}`;
   const images = [...new Set([...(variant?.image ? [variant.image] : []), ...product.mockups])];
   return (
     <article
@@ -42,7 +45,9 @@ export default function ProductCard({
         key={variantId ?? product.id}
         title={product.title}
         images={images}
-        href={detail ? undefined : productUrl}
+        productId={detail ? undefined : product.id}
+        showThumbnails={detail}
+        drawable={drawable}
       />
       <div {...stylex.props(styles.productBody)}>
         <div {...stylex.props(styles.productHeading)}>
@@ -50,9 +55,13 @@ export default function ProductCard({
             <h1 {...stylex.props(styles.detailTitle)}>{product.title}</h1>
           ) : (
             <h3 {...stylex.props(styles.productTitle)}>
-              <a href={productUrl} {...stylex.props(styles.productLink)}>
+              <Link
+                to="/products/$id"
+                params={{ id: product.id }}
+                {...stylex.props(styles.productLink)}
+              >
                 {product.title}
-              </a>
+              </Link>
             </h3>
           )}
           <span {...stylex.props(styles.price)}>

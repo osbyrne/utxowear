@@ -1,3 +1,6 @@
+> Historical implementation plan. The frontend now uses React and TanStack Start.
+> See [frontend architecture](frontend-architecture.md) for the current server boundary.
+
 # Effect implementation plan for GPT-5.6 Luna Max
 
 Prepared September 14, 2026. This is an implementation handoff; application code has not been changed.

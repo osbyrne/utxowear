@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { Link, useLocation } from "@tanstack/react-router";
 import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import Catalog from "./Catalog";
@@ -7,8 +8,9 @@ import { money } from "./ProductCard";
 import { styles } from "../styles/storefront.stylex";
 import { validateAmount, type Currency } from "../lib/checkout/domain";
 import { countryCodes } from "../lib/countries";
+import { useCart, type CartLine } from "./CartProvider";
+import { FlameWrap } from "./canvasui/FlameWrap";
 
-type CartLine = { productId: string; variantId: number; quantity: number };
 type Address = {
   first_name: string;
   last_name: string;
@@ -133,16 +135,17 @@ const countryOptions = countryCodes
 
 export default function Checkout({
   products,
-  catalog = false,
   bag = false,
   productId,
+  layout,
 }: {
   products: StoreProduct[];
-  catalog?: boolean;
   bag?: boolean;
   productId?: string;
+  layout?: "grid" | "stacked";
 }) {
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const { cart, setCart, cartLoaded } = useCart();
+  const { searchStr } = useLocation();
   const [address, setAddress] = useState<Address>(emptyAddress);
   const [quote, setQuote] = useState<ShippingQuote | null>(null);
   const [shippingMethod, setShippingMethod] = useState<number | null>(null);
@@ -151,7 +154,6 @@ export default function Checkout({
   const [notice, setNotice] = useState("");
   const quoteRequest = useRef<AbortController | null>(null);
   const checkoutRequest = useRef<AbortController | null>(null);
-  const [cartLoaded, setCartLoaded] = useState(false);
   const cartCurrencies = new Set(
     cart.map((line) => products.find((product) => product.id === line.productId)?.currency),
   );
@@ -159,72 +161,34 @@ export default function Checkout({
   const validCartCurrency = currency === "USD" || currency === "EUR";
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("utxowear-cart") ?? "[]") as unknown;
-      if (Array.isArray(saved)) {
-        const available = new Map(
-          products
-            .filter((product) => !product.checkoutUnavailableReason)
-            .flatMap((product) =>
-              product.variants.map((variant) => [`${product.id}:${variant.id}`, variant] as const),
-            ),
-        );
-        const lines = saved.filter(
-          (line): line is CartLine =>
-            line !== null &&
-            typeof line === "object" &&
-            typeof line.productId === "string" &&
-            Number.isSafeInteger(line.variantId) &&
-            Number.isSafeInteger(line.quantity) &&
-            line.quantity > 0 &&
-            line.quantity <= 20 &&
-            available.has(`${line.productId}:${line.variantId}`),
-        );
-        if (lines.length <= 12 && lines.reduce((sum, line) => sum + line.quantity, 0) <= 50)
-          setCart(lines);
-      }
-    } catch {
-      // Invalid local cart data is ignored; the server independently validates checkout.
-    }
-    setCartLoaded(true);
-  }, [products]);
-
-  useEffect(() => {
     if (!cartLoaded) return;
-    try {
-      localStorage.setItem("utxowear-cart", JSON.stringify(cart));
-    } catch {
-      // Browsers can disable local storage; the in-memory bag still works.
-    }
-  }, [cart, cartLoaded]);
+    const available = new Set(
+      products
+        .filter((product) => !product.checkoutUnavailableReason)
+        .flatMap((product) => product.variants.map((variant) => `${product.id}:${variant.id}`)),
+    );
+    setCart((lines) => {
+      const retained = lines.filter((line) => available.has(`${line.productId}:${line.variantId}`));
+      return retained.length === lines.length ? lines : retained;
+    });
+  }, [products, cartLoaded, setCart]);
 
   useEffect(() => {
-    const status = new URLSearchParams(window.location.search).get("checkout");
+    const status = new URLSearchParams(searchStr).get("checkout");
     if (status === "success") {
-      setCart([]);
-      try {
-        localStorage.removeItem("utxowear-cart");
-      } catch {
-        // The empty cart is still cleared in memory if storage is unavailable.
-      }
       setNotice(
         "Returned from payment. Fulfillment starts only after Stripe confirms payment; keep your payment receipt for support.",
       );
     }
     if (status === "cancel") setNotice("Checkout was canceled. You can start again from the bag.");
-  }, []);
+  }, [searchStr]);
 
   useEffect(() => {
-    const badge = document.querySelector("[data-cart-count]");
-    const count = cart.reduce((total, line) => total + line.quantity, 0);
-    if (badge) badge.textContent = String(count);
-    const bag = document.querySelector("[data-cart-link]");
-    if (bag)
-      bag.setAttribute(
-        "aria-label",
-        `Shopping bag with ${count} ${count === 1 ? "item" : "items"}`,
-      );
-  }, [cart]);
+    return () => {
+      quoteRequest.current?.abort();
+      checkoutRequest.current?.abort();
+    };
+  }, []);
 
   function invalidateQuote() {
     quoteRequest.current?.abort();
@@ -399,17 +363,18 @@ export default function Checkout({
 
   return (
     <>
+      <span hidden data-storefront-ready={cartLoaded ? "true" : undefined} />
       {!bag &&
         (productId ? (
           products
             .filter((product) => product.id === productId)
             .map((product) => <ProductCard key={product.id} product={product} onAdd={add} detail />)
         ) : (
-          <Catalog products={products} full={catalog} onAdd={add} />
+          <Catalog products={products} onAdd={add} layout={layout} />
         ))}
       {!bag && notice && (
         <p {...stylex.props(styles.notice)} role="status">
-          {notice} <a href="/cart">View bag</a>
+          {notice} <Link to="/cart">View bag</Link>
         </p>
       )}
       {!bag && error && (
@@ -424,7 +389,7 @@ export default function Checkout({
           </h1>
           {cartLoaded && cart.length === 0 && (
             <p>
-              Your bag is empty. <a href="/products">Browse products</a>
+              Your bag is empty. <Link to="/">Browse products</Link>
             </p>
           )}
           {notice && (
@@ -596,14 +561,28 @@ export default function Checkout({
                   {error}
                 </p>
               )}
-              <button
-                {...stylex.props(styles.primaryButton)}
-                type="button"
-                disabled={!quote || shippingMethod === null || pending !== null}
-                onClick={startCheckout}
+              <FlameWrap
+                {...stylex.props(styles.paymentEffect)}
+                height={56}
+                spread={8}
+                radius={0}
+                color={[1, 0.35, 0.08]}
+                intensity={!quote || shippingMethod === null || pending !== null ? 0.15 : 0.65}
+                melt={1}
+                distortion={2}
+                smoke={0.3}
               >
-                {pending === "checkout" ? "Opening secure payment…" : "Continue to secure payment"}
-              </button>
+                <button
+                  {...stylex.props(styles.primaryButton, styles.paymentButton)}
+                  type="button"
+                  disabled={!quote || shippingMethod === null || pending !== null}
+                  onClick={startCheckout}
+                >
+                  {pending === "checkout"
+                    ? "Opening secure payment…"
+                    : "Continue to secure payment"}
+                </button>
+              </FlameWrap>
               {!quote && (
                 <p {...stylex.props(styles.muted)}>
                   Checkout is disabled until shipping rates are available. If the service is

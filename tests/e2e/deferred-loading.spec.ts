@@ -16,11 +16,11 @@ test.beforeEach(async ({ page }) => {
 test("the homepage loads products without shirt assets and links to the shirt only in the footer", async ({
   page,
 }) => {
-  const releaseProducts = await suspendRequests(page, "**/_server-islands/ProductList?*");
+  const releaseProducts = await suspendRequests(page, "**/_serverFn/**");
   const shirtRequests: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
-    if (path.includes("/DeferredShirt.") || path.includes("/Shirt.") || path === "/tshirt.glb") {
+    if (path.includes("/DeferredShirt-") || path.includes("/Shirt-") || path === "/tshirt.glb") {
       shirtRequests.push(path);
     }
   });
@@ -56,7 +56,7 @@ test("the homepage loads products without shirt assets and links to the shirt on
 test("the shirt page remains usable while the shirt code and model are loading", async ({
   page,
 }) => {
-  const releaseShirt = await suspendRequests(page, "**/_astro/Shirt.*.js");
+  const releaseShirt = await suspendRequests(page, "**/assets/Shirt-*.js");
   const releaseModel = await suspendRequests(page, "**/tshirt.glb");
 
   try {
@@ -65,7 +65,7 @@ test("the shirt page remains usable while the shirt code and model are loading",
     const html = await response?.text();
     expect(html).toContain("Bitcoin whitepaper abstract");
     expect(html).not.toContain("/tshirt.glb");
-    await expect(page.getByRole("link", { name: "Search products" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "utxowear home" })).toBeVisible();
     await expect(page.locator("#canvas-container svg")).toBeVisible();
     const initialBounds = await page.locator("#canvas-container").boundingBox();
     expect(initialBounds?.height).toBeGreaterThan(300);
@@ -98,41 +98,35 @@ test("the shirt page remains usable while the shirt code and model are loading",
   }
 });
 
-test("the catalog shell survives an unavailable deferred request and supports reloading", async ({
-  page,
-}) => {
-  await page.clock.install();
-  await page.route("**/_server-islands/ProductList?*", (route) =>
+test("the homepage reports a failed catalog request and supports reloading", async ({ page }) => {
+  await page.route("**/_serverFn/**", (route) =>
     route.fulfill({ status: 503, contentType: "text/plain", body: "Unavailable" }),
   );
-  await page.goto("/products");
-  await expect(page.getByRole("heading", { name: "All products" })).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Loading products");
-  await page.clock.fastForward(15_000);
-  await expect(page.getByRole("alert")).toContainText("Loading is taking longer than expected");
-  await page.unroute("**/_server-islands/ProductList?*");
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Products", exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Products could not load");
+  await page.unroute("**/_serverFn/**");
   await page.getByRole("link", { name: "Reload", exact: true }).click();
   await expect(page.locator("article").first()).toBeVisible();
-  await expect(page.getByRole("searchbox", { name: "Search", exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
 });
 
-test("product details reuse metadata data and render on idle while preserving cart and 404 behavior", async ({
+test("product details reuse metadata data and defer rendering while preserving cart and 404 behavior", async ({
   page,
   request,
 }) => {
-  await page.goto("/products");
+  await page.goto("/");
   const card = page.locator("article").first();
   const title = await card.getByRole("heading").innerText();
   const productPath = await card.getByRole("heading").getByRole("link").getAttribute("href");
   if (!productPath) throw new Error("Product link is missing.");
-  const releaseDetails = await suspendRequests(page, "**/_astro/Checkout.*.js");
+  const releaseDetails = await suspendRequests(page, "**/assets/Checkout-*.js");
 
   try {
     const response = await page.goto(productPath, { waitUntil: "domcontentloaded" });
     expect(response?.status()).toBe(200);
     const html = await response?.text();
     expect(html).not.toContain('class="product-description"');
-    expect(html).not.toContain("/_server-islands/");
     await expect(page).toHaveTitle(`${title} — utxowear`);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       "content",
@@ -141,7 +135,7 @@ test("product details reuse metadata data and render on idle while preserving ca
     const preview = await page.locator('meta[property="og:image"]').getAttribute("content");
     expect(preview).not.toContain("/images/link-preview.png");
     await expect(page.getByRole("status")).toContainText("Loading product details");
-    await expect(page.getByRole("link", { name: "← All products" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "← All products" })).toHaveAttribute("href", "/");
     await expect(page.locator(".product-description")).toHaveCount(0);
     releaseDetails();
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
@@ -153,20 +147,20 @@ test("product details reuse metadata data and render on idle while preserving ca
     await expect
       .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
       .toBeGreaterThan(0);
-    await expect(
-      page.locator('astro-island[component-url*="DeferredProductDetails"]:not([ssr])'),
-    ).toBeAttached();
-    await expect(gallery.getByRole("group", { name: "Product images", exact: true })).toHaveCSS(
-      "overflow-x",
-      "auto",
+    await expect(page.locator('[data-storefront-ready="true"]')).toBeAttached();
+    const thumbnails = gallery.getByRole("group", { name: "Product mockups", exact: true });
+    await expect(thumbnails).toBeVisible();
+    await expect(gallery.getByRole("button", { name: /Previous mockup|Next mockup/ })).toHaveCount(
+      0,
     );
-    const next = gallery.getByRole("button", { name: "Next mockup" });
     await expect(gallery.getByRole("slider")).toHaveCount(0);
-    if (await next.count()) {
-      await next.click();
-      await expect(gallery.locator("img").nth(1)).toBeInViewport();
-      await gallery.getByRole("group", { name: "Product images", exact: true }).press("Home");
-      await expect(image).toBeInViewport();
+    const buttons = thumbnails.getByRole("button");
+    if ((await buttons.count()) > 1) {
+      const source = await buttons.nth(1).locator("img").getAttribute("src");
+      if (!source) throw new Error("Mockup thumbnail source is missing.");
+      await buttons.nth(1).click();
+      await expect(image).toHaveAttribute("src", source);
+      await expect(buttons.nth(1)).toHaveAttribute("aria-pressed", "true");
     }
     await page.getByRole("spinbutton", { name: "Quantity" }).fill("2");
     await page.getByRole("button", { name: "Add to bag", exact: true }).click();
@@ -181,7 +175,7 @@ test("product details reuse metadata data and render on idle while preserving ca
   }
 });
 
-for (const asset of ["**/_astro/Shirt.*.js", "**/tshirt.glb"]) {
+for (const asset of ["**/assets/Shirt-*.js", "**/tshirt.glb"]) {
   test(`a failed shirt asset (${asset}) leaves the page and abstract available`, async ({
     page,
   }) => {
@@ -195,23 +189,23 @@ for (const asset of ["**/_astro/Shirt.*.js", "**/tshirt.glb"]) {
       "href",
       "/3d-shirt",
     );
-    await expect(page.getByRole("link", { name: "Search products" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "utxowear home" })).toBeVisible();
   });
 }
 
 test("a failed product component download supports reloading without losing metadata", async ({
   page,
 }) => {
-  await page.goto("/products");
+  await page.goto("/");
   const card = page.locator("article").first();
   const title = await card.getByRole("heading").innerText();
   const productPath = await card.getByRole("heading").getByRole("link").getAttribute("href");
   if (!productPath) throw new Error("Product link is missing.");
-  await page.route("**/_astro/Checkout.*.js", (route) => route.abort());
+  await page.route("**/assets/Checkout-*.js", (route) => route.abort());
   await page.goto(productPath);
   await expect(page).toHaveTitle(`${title} — utxowear`);
   await expect(page.getByRole("alert")).toContainText("Product details could not load");
-  await page.unroute("**/_astro/Checkout.*.js");
+  await page.unroute("**/assets/Checkout-*.js");
   await page.getByRole("link", { name: "Reload", exact: true }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 });

@@ -55,6 +55,7 @@ test("publish and unpublish change catalog eligibility; replaying a completed re
   expect(isPublished(product)).toBe(false);
   await handlePublishingEvent(config, event("create", 123));
   expect(isPublished(product)).toBe(true);
+  expect(product.external).toHaveProperty("handle", "https://store.example/products/product123");
   product.is_locked = true;
   await handlePublishingEvent(config, event("delete")); // Printify omits shop_id on this event.
   expect(isPublished(product)).toBe(false);

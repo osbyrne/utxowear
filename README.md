@@ -19,7 +19,7 @@ enabled (see [Environments](#environments)). The Printify token and Stripe
 secret keys are never sent to browsers. Public-store or local fallback products
 have no trustworthy variant IDs and cannot be purchased through this checkout.
 
-This application runs as an Astro server on **Cloudflare Workers**, with a D1
+This application uses React and TanStack Start on **Cloudflare Workers**, with a D1
 database used to prevent duplicate fulfillment on Stripe webhook retries. It
 cannot be deployed as a static-only site. The Printify API must grant access to
 the shop that owns the listed products; use a shop supporting API order creation.
@@ -236,13 +236,13 @@ are preserved; drafts are not automatically published during migration.
 
 | Command                             | Action                                                          |
 | :---------------------------------- | :-------------------------------------------------------------- |
-| `bun dev`                           | Generate Worker types and start the Astro/Cloudflare dev server |
+| `bun dev`                           | Generate Worker types and start the React/Cloudflare dev server |
 | `bun run migrate:local`             | Apply checkout ledger migration to local D1                     |
 | `bun run migrate:preview`           | Apply checkout ledger migrations to preview D1                  |
 | `bun run migrate:production`        | Apply checkout ledger migrations to production D1               |
-| `bun check`                         | Type-check Astro and TypeScript                                 |
+| `bun check`                         | Type-check the React application and TypeScript                 |
 | `bun test`                          | Run the focused runtime integration tests                       |
-| `bun run test:e2e`                  | Run three browser smoke tests against the live store            |
+| `bun run test:e2e`                  | Run the storefront browser suite against the configured store   |
 | `bun run build`                     | Build the Worker into `dist/`                                   |
 | `bun test ./scripts/deploy.test.ts` | Verify deployment and release restrictions                      |
 | `bun run deploy:preview`            | Build, migrate, and deploy a clean trunk checkout to preview    |
@@ -250,22 +250,21 @@ are preserved; drafts are not automatically published during migration.
 
 ## Styling
 
+The frontend uses React, TypeScript, and TanStack Start with TanStack Router.
+All page components and the shared document live in `src/routes/`. Product pages
+render their title and preview metadata on the server. The homepage loads the
+complete catalog after hydration, and the 3D view remains on `/3d-shirt`.
+See [frontend architecture](docs/frontend-architecture.md) for ownership and data flow.
+
 Component styles use [StyleX](https://stylexjs.com/). The official
-`@stylexjs/unplugin` Vite plugin compiles styles and includes the generated CSS in
-Astro's production stylesheet. The development-only stylesheet and HMR import in
-`src/pages/index.astro` keep server-rendered styles up to date during `bun dev`.
+`@stylexjs/unplugin` Vite plugin compiles styles into the production stylesheets.
 
 - `src/styles/theme.stylex.ts` defines shared colors and typography.
-- `src/styles/storefront.stylex.ts` defines the Astro storefront styles. Apply
-  them with `stylex.attrs(...)`; keep compiler-only `stylex.create` in
-  TypeScript modules, outside Astro templates.
-- React components use `stylex.props(...)`, with the 3D preview styles colocated
-  in `src/components/Shirt.tsx`.
-- `src/app.css` contains only the font import and a global reset, in a lower
-  cascade layer than the generated component styles.
+- `src/styles/storefront.stylex.ts` defines shared storefront styles.
+- React components apply styles with `stylex.props(...)`.
+- `src/app.css` contains fonts and the global reset in a lower cascade layer.
 
-Use explicit border width, style, and color properties in StyleX definitions.
-Run `bun check` and `bun build` to validate changes.
+Run `bun run check` and `bun run build` to validate changes.
 
 See [testing](docs/testing.md) for scope, browser setup, and payment-test limits.
 

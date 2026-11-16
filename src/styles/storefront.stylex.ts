@@ -213,6 +213,7 @@ export const styles = stylex.create({
     overflow: "hidden",
   },
   catalogViewport: { flex: 1, minHeight: 0 },
+  catalogScroller: { height: "100%", overflowY: "auto", padding: 1 },
   panelSelection: {
     display: "flex",
     flexWrap: "wrap",

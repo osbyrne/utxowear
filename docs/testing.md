@@ -60,7 +60,7 @@ bunx playwright install --with-deps chromium
 
 The browser checks cover:
 
-- All products on the homepage, image loading, absence of search and filter controls, and the old catalog redirect.
+- All products on the homepage, image loading, absence of search and filter controls, and the `/products` cloth catalog.
 - Bag quantities across React navigation, information pages, reloads, and removal.
 - Server product metadata, missing product and route 404 responses, and selectable mockup thumbnails.
 - Deferred catalog, checkout code, and 3D model loading, including failure recovery.

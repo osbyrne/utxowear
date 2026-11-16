@@ -5,7 +5,7 @@ import ProductLoading from "./ProductLoading";
 import { useCatalog } from "./useCatalog";
 
 export default function ProductList({ layout = "grid" }: { layout?: CatalogLayout }) {
-  const reloadPath = layout === "stacked" ? "/bend" : "/";
+  const reloadPath = layout === "stacked" ? "/bend" : layout === "suspended" ? "/products" : "/";
   const state = useCatalog();
 
   switch (state.kind) {

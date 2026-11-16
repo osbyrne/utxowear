@@ -2,6 +2,8 @@ import * as stylex from "@stylexjs/stylex";
 import type { StoreProduct, StoreVariant } from "../lib/printify/model";
 import { styles } from "../styles/storefront.stylex";
 import { Bend } from "./canvasui/Bend";
+import { Cloth } from "./canvasui/Cloth";
+import type { CatalogLayout } from "./DeferredCheckout";
 import ProductCard from "./ProductCard";
 
 export default function Catalog({
@@ -11,7 +13,7 @@ export default function Catalog({
 }: {
   products: StoreProduct[];
   onAdd: (product: StoreProduct, variant: StoreVariant, quantity: number) => void;
-  layout?: "grid" | "stacked";
+  layout?: CatalogLayout;
 }) {
   if (!products.length) {
     return (
@@ -29,6 +31,19 @@ export default function Catalog({
           ))}
         </div>
       </Bend>
+    );
+  }
+  if (layout === "suspended") {
+    return (
+      <Cloth {...stylex.props(styles.catalogViewport)} pin="top">
+        <div {...stylex.props(styles.catalogScroller)}>
+          <div {...stylex.props(styles.productGrid)}>
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} onAdd={onAdd} drawable />
+            ))}
+          </div>
+        </div>
+      </Cloth>
     );
   }
   return (

@@ -7,7 +7,7 @@ import ProductLoading from "./ProductLoading";
 
 const Checkout = lazy(() => import("./Checkout"));
 
-export type CatalogLayout = "grid" | "stacked";
+export type CatalogLayout = "grid" | "stacked" | "suspended";
 
 type CheckoutView =
   | { kind: "catalog"; layout?: CatalogLayout }
@@ -28,7 +28,9 @@ export default function DeferredCheckout({
         ? "/cart"
         : view.layout === "stacked"
           ? "/bend"
-          : "/";
+          : view.layout === "suspended"
+            ? "/products"
+            : "/";
   return (
     <DeferredContent
       loadingFallback={

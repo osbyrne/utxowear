@@ -38,6 +38,14 @@ images in this layout load in CORS mode. They also load eagerly, because native 
 loading has no look-ahead margin inside an internal scroller. The homepage keeps
 the responsive product grid.
 
+The `/products` route is a second alternate catalog. It also sets
+`staticData.fixedViewportHeight` and hangs the product grid from the top edge of the
+canvasui `Cloth` component (`src/components/canvasui/Cloth.tsx`), which ripples in the
+wind and responds to the cursor. The grid scrolls inside its own container, because
+`Cloth` clips its content to a box whose height comes from its parent. Like Bend,
+Cloth needs the browser's HTML-in-canvas API and otherwise renders the same grid as
+ordinary HTML, so its images also load in CORS mode.
+
 The `/panel` route shows one strip per shirt using the DiMaac `ExpandablePanel`
 (`src/components/dimaac/ExpandablePanel.tsx`), which GSAP animates. The component
 was ported from Tailwind to StyleX, and its stacked layout follows the viewport

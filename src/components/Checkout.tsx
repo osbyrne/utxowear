@@ -10,6 +10,7 @@ import { validateAmount, type Currency } from "../lib/checkout/domain";
 import { countryCodes } from "../lib/countries";
 import { useCart, type CartLine } from "./CartProvider";
 import { FlameWrap } from "./canvasui/FlameWrap";
+import type { CatalogLayout } from "./DeferredCheckout";
 
 type Address = {
   first_name: string;
@@ -142,7 +143,7 @@ export default function Checkout({
   products: StoreProduct[];
   bag?: boolean;
   productId?: string;
-  layout?: "grid" | "stacked";
+  layout?: CatalogLayout;
 }) {
   const { cart, setCart, cartLoaded } = useCart();
   const { searchStr } = useLocation();

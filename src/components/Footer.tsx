@@ -14,6 +14,9 @@ export default function Footer() {
           <Link to="/bend" {...stylex.props(styles.productLink)}>
             Bend
           </Link>
+          <Link to="/products" {...stylex.props(styles.productLink)}>
+            Cloth
+          </Link>
           <Link to="/panel" {...stylex.props(styles.productLink)}>
             Panel
           </Link>

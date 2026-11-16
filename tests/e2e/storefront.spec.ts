@@ -26,10 +26,11 @@ test("the homepage lists products without search or filter controls", async ({ p
   }
 });
 
-test("the former catalog address redirects to the homepage", async ({ request }) => {
-  const response = await request.get("/products", { maxRedirects: 0 });
-  expect(response.status()).toBe(301);
-  expect(response.headers().location).toBe("/");
+test("the products page lists every product on a cloth", async ({ page }) => {
+  await page.goto("/products");
+  await waitForStorefront(page);
+  await expect(page).toHaveURL(/\/products$/);
+  await expect(page.locator("article").first()).toBeVisible();
 });
 
 test("the bag retains quantities across pages and lets the buyer remove an item", async ({

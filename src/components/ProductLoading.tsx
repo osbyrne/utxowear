@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import { styles } from "../styles/storefront.stylex";
+import type { CatalogLayout } from "./DeferredCheckout";
 
 export default function ProductLoading({
   detail = false,
@@ -9,7 +10,7 @@ export default function ProductLoading({
 }: {
   detail?: boolean;
   reloadPath: string;
-  layout?: "grid" | "stacked";
+  layout?: CatalogLayout;
 }) {
   const stacked = !detail && layout === "stacked";
   const [delayed, setDelayed] = useState(false);

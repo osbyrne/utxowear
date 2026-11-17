@@ -93,10 +93,9 @@ async function deploy(): Promise<void> {
     if (result.exitCode !== 0) throw new Error("Cannot verify the current origin/trunk.");
   }
   const reference =
-    process.env.GITHUB_REF ||
-    (environment === "production"
+    environment === "production"
       ? `refs/tags/${git(process.cwd(), "describe", "--exact-match", "--tags", "HEAD")}`
-      : git(process.cwd(), "symbolic-ref", "HEAD"));
+      : git(process.cwd(), "symbolic-ref", "HEAD");
   const { commit, version } = verifyDeploymentReference(environment, reference);
   const childEnvironment = {
     ...process.env,

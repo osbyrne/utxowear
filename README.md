@@ -177,11 +177,12 @@ over `.env`; use one, not both, and restart after changing modes or shop IDs.
 
 ### Deployment
 
-Development uses `trunk`. Each verified trunk commit deploys the `preview`
-Worker at `https://preview.utxowear.com`. Production at `https://utxowear.com`
-deploys only from a `vX.Y.Z` tag whose commit belongs to `origin/trunk`.
-GitHub Actions runs the checks, builds for the selected environment, verifies
-the generated bindings, applies D1 migrations, and deploys that build.
+Development uses `trunk`. `bun run deploy:preview` deploys a clean trunk checkout
+to the `preview` Worker at `https://preview.utxowear.com`. Production at
+`https://utxowear.com` deploys only from a `vX.Y.Z` tag whose commit belongs to
+`origin/trunk`, using `bun run deploy:production`. The deployment command builds
+for the selected environment, verifies the generated bindings, applies D1
+migrations, and deploys that build.
 
 See [release and deployment instructions](docs/deployment.md) for provider setup,
 Cloudflare Access, environment secrets, releases, and recovery.

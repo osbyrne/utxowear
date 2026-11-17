@@ -3,17 +3,15 @@
 ## Configure the environments
 
 1. Keep `trunk` as the default branch. Merge short-lived branches into trunk.
-2. In GitHub, create the `preview` and `production` environments. Restrict preview
-   deployments to the `trunk` branch and production deployments to `v*` tags.
-   Keep the `Release tag integrity` ruleset active to prevent release tag updates
+2. Keep the `Release tag integrity` ruleset active to prevent release tag updates
    and deletions.
-3. Set `CLOUDFLARE_API_TOKEN` as a secret in each GitHub environment. Grant the
-   deployment token Workers Scripts Edit, Workers KV Storage Edit, D1 Edit,
-   Zone Read, and Workers Routes Edit for the account and zone in `wrangler.jsonc`.
-   Use separate tokens if independent revocation is required.
+3. Authenticate Wrangler locally with `bunx wrangler login`, or export a
+   `CLOUDFLARE_API_TOKEN` granting Workers Scripts Edit, Workers KV Storage Edit,
+   D1 Edit, Zone Read, and Workers Routes Edit for the account and zone in
+   `wrangler.jsonc`.
 4. Remove Cloudflare Workers Builds triggers that deploy `utxowear` from trunk
-   or other branches. GitHub Actions owns deployment. A second deployment
-   mechanism can overwrite a tagged release.
+   or other branches. The local deployment command owns deployment. A second
+   deployment mechanism can overwrite a tagged release.
 5. Retain the production D1 database and session namespace. Preview uses the
    separate resources recorded under `env.preview` in `wrangler.jsonc`.
 6. Configure Worker secrets with an explicit environment:
@@ -90,14 +88,11 @@ and Stripe's [webhook endpoint API](https://docs.stripe.com/api/webhook_endpoint
 
 ## Deploy preview
 
-Push a commit to trunk. The `Verify and deploy` workflow runs lint, formatting,
-type checks, runtime tests, deployment tests, and builds for both environments.
-The preview job deploys after verification succeeds. Pull requests run verification
-without deployment credentials.
-
-To deploy the same clean trunk checkout from an authenticated local terminal, run:
+Verify the trunk checkout, then deploy it from an authenticated terminal:
 
 ```sh
+bun run lint && bun run format:check && bun run check
+bun test && bun test ./scripts/deploy.test.ts
 bun run deploy:preview
 ```
 
@@ -117,10 +112,10 @@ git push origin v0.0.1
 ```
 
 Choose the next unused version. Tags use exactly `vMAJOR.MINOR.PATCH` without
-leading zeroes or prerelease suffixes. The production job rejects tags that
-identify a commit outside trunk. Deployment jobs serialize writes per environment.
+leading zeroes or prerelease suffixes. The deployment command rejects tags that
+identify a commit outside trunk. Run one deployment per environment at a time.
 
-For an authenticated local release deployment, check out the tag, then run:
+Check out the tag, then run:
 
 ```sh
 git switch --detach v0.0.1
@@ -134,7 +129,7 @@ No Stripe payment or Printify order is created by deployment.
 
 ## Recover a failed deployment
 
-Re-run a failed GitHub Actions job after correcting its cause. D1 tracks applied
+Re-run the failed deployment command after correcting its cause. D1 tracks applied
 migrations, so re-running does not apply a completed migration again. A failure
 after migrations can leave the database ahead of the deployed code. Keep schema
 changes compatible with the current production release until a later release

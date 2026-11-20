@@ -91,8 +91,7 @@ and Stripe's [webhook endpoint API](https://docs.stripe.com/api/webhook_endpoint
 Verify the trunk checkout, then deploy it from an authenticated terminal:
 
 ```sh
-bun run lint && bun run format:check && bun run check
-bun test && bun test ./scripts/deploy.test.ts
+bun run verify
 bun run deploy:preview
 ```
 

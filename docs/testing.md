@@ -1,10 +1,12 @@
 # Testing
 
-Use `bun run check` for TypeScript checks and `bun test` for the focused
-runtime regressions. `bunfig.toml` keeps Bun's runner scoped to `src/lib`, so
-it does not try to execute Playwright's browser specs.
+Use `bun run check` for TypeScript checks and `bun run test` for the focused
+runtime regressions. Vitest runs on Node.js (22.13 or later, for `node:sqlite`)
+and `vitest.config.ts` includes only `src/**/*.test.ts` and `scripts/**/*.test.ts`,
+so it does not try to execute Playwright's browser specs. `bun run test:watch`
+re-runs affected tests while editing.
 
-Run `bun test ./scripts/deploy.test.ts` for deployment restrictions. These tests
+`scripts/deploy.test.ts` covers deployment restrictions. These tests
 use a temporary Git repository to reject unmerged release tags, malformed
 versions, uncommitted changes, and builds targeting the wrong environment.
 

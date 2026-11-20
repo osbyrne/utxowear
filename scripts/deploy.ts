@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 import { unstable_readConfig } from "wrangler";
@@ -5,9 +6,9 @@ import { unstable_readConfig } from "wrangler";
 export type DeploymentEnvironment = "preview" | "production";
 
 function git(directory: string, ...arguments_: string[]): string {
-  const result = Bun.spawnSync(["git", ...arguments_], { cwd: directory, stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`Git command failed: git ${arguments_.join(" ")}`);
-  return result.stdout.toString().trim();
+  const result = spawnSync("git", arguments_, { cwd: directory, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`Git command failed: git ${arguments_.join(" ")}`);
+  return result.stdout.trim();
 }
 
 export function verifyDeploymentReference(
@@ -84,13 +85,12 @@ async function deploy(): Promise<void> {
   if (environment !== "preview" && environment !== "production")
     throw new Error("Specify a deployment environment: preview or production.");
   if (environment === "production") {
-    const result = Bun.spawnSync([
-      "git",
+    const result = spawnSync("git", [
       "fetch",
       "origin",
       "+refs/heads/trunk:refs/remotes/origin/trunk",
     ]);
-    if (result.exitCode !== 0) throw new Error("Cannot verify the current origin/trunk.");
+    if (result.status !== 0) throw new Error("Cannot verify the current origin/trunk.");
   }
   const reference =
     environment === "production"
@@ -106,13 +106,13 @@ async function deploy(): Promise<void> {
     arguments_: string[],
     environmentVariables: NodeJS.ProcessEnv = childEnvironment,
   ): Promise<void> {
-    const result = Bun.spawn(arguments_, {
-      env: environmentVariables,
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
+    const [command = "", ...commandArguments] = arguments_;
+    const child = spawn(command, commandArguments, { env: environmentVariables, stdio: "inherit" });
+    const status = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", resolve);
     });
-    if ((await result.exited) !== 0) throw new Error(`Command failed: ${arguments_.join(" ")}`);
+    if (status !== 0) throw new Error(`Command failed: ${arguments_.join(" ")}`);
   }
   await run(["bun", "run", "build"]);
   const artifact: unknown = JSON.parse(await readFile("dist/server/wrangler.json", "utf8"));

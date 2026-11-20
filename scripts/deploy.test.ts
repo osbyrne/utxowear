@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,8 +9,8 @@ import { verifyDeploymentArtifact, verifyDeploymentReference } from "./deploy";
 const directory = mkdtempSync(join(tmpdir(), "utxowear-release-verification-"));
 
 function git(...arguments_: string[]): void {
-  const result = Bun.spawnSync(["git", ...arguments_], { cwd: directory });
-  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  const result = spawnSync("git", arguments_, { cwd: directory, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr);
 }
 
 beforeAll(() => {

@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { validateAddress, type Address, type Quote } from "./domain";
-import { Database } from "bun:sqlite";
 import { usdPricing } from "../pricing";
-import { claimOrder, markOrderCreated, markOrderUncertain, type CheckoutDatabase } from "./orders";
+import { claimOrder, markOrderCreated, markOrderUncertain } from "./orders";
 import { quoteCart } from "./printify";
+import { createCheckoutTestDatabase } from "./test-database";
 import { checkoutSnapshot, createStripeSession, verifyStripeWebhook } from "./stripe";
 
 const address: Address = {
@@ -103,7 +103,7 @@ describe("Stripe tax and signed paid checkout", () => {
         quote,
         quote.options[0],
       );
-      expect(url).toStartWith("https://checkout.stripe.com/");
+      expect(url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
       expect(customerParams?.get("shipping[address][postal_code]")).toBe("94612");
       expect(checkoutParams?.get("customer")).toBe("cus_test");
       expect(checkoutParams?.get("automatic_tax[enabled]")).toBe("true");
@@ -201,26 +201,7 @@ async function signWebhook(raw: string) {
 }
 
 test("fulfillment claims execute actual SQL: concurrent delivery creates once and uncertainty blocks retries", async () => {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(
-    await Bun.file(new URL("../../../migrations/0001_checkout_orders.sql", import.meta.url)).text(),
-  );
-  const db: CheckoutDatabase = {
-    prepare(query) {
-      return {
-        bind(...values) {
-          return {
-            async run() {
-              return { meta: { changes: sqlite.query(query).run(...values).changes } };
-            },
-            async first<T>() {
-              return sqlite.query(query).get(...values) as T | null;
-            },
-          };
-        },
-      };
-    },
-  };
+  const { sqlite, db } = createCheckoutTestDatabase();
   try {
     const claims = await Promise.allSettled([claimOrder(db, "cs_once"), claimOrder(db, "cs_once")]);
     expect(claims.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -228,7 +209,7 @@ test("fulfillment claims execute actual SQL: concurrent delivery creates once an
     expect(await claimOrder(db, "cs_once")).toBe("created");
     expect(
       sqlite
-        .query("SELECT COUNT(*) AS count FROM checkout_orders WHERE session_id = ?")
+        .prepare("SELECT COUNT(*) AS count FROM checkout_orders WHERE session_id = ?")
         .get("cs_once"),
     ).toEqual({ count: 1 });
     await claimOrder(db, "cs_uncertain");

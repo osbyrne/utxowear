@@ -1,4 +1,5 @@
-import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
+import { inspect } from "node:util";
+import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { CheckoutError, jsonError, type Quote } from "./domain";
 import { createStripeSession } from "./stripe";
 
@@ -41,7 +42,7 @@ const quote: Quote = {
   options: [{ method: 1, label: "Standard", price: 900, currency: "USD" }],
 };
 const originalFetch = globalThis.fetch;
-const consoleError = spyOn(console, "error").mockImplementation(() => {});
+const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
 afterAll(() => consoleError.mockRestore());
 
@@ -68,7 +69,7 @@ async function verifyStripeFailure(message: string) {
   const payload: unknown = await response.json();
   expect(payload).toEqual({ error: message });
   expect(consoleError).toHaveBeenCalledTimes(1);
-  const output = Bun.inspect(consoleError.mock.calls);
+  const output = inspect(consoleError.mock.calls);
   for (const value of Object.values(customerValues)) expect(output).not.toContain(value);
   return consoleError.mock.calls[0];
 }

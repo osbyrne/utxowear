@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { usdPricing } from "./pricing";
 
 test("money stays in integer cents and EUR conversion fails closed instead of relabelling USD", () => {

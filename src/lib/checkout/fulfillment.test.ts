@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import type { DatabaseSync } from "node:sqlite";
 import { configFromEnvironment } from "../printify";
 import { fulfillStripeWebhook } from "./fulfillment";
-import type { CheckoutDatabase } from "./orders";
 import { createPrintifyOrder, quoteCart } from "./printify";
+import { createCheckoutTestDatabase } from "./test-database";
 import { requireCheckoutConfig, type CheckoutBindings } from "./runtime";
 
 const originalFetch = globalThis.fetch;
@@ -20,31 +20,14 @@ const address = {
   zip: "94612",
 };
 const item = { productId: "5b05842f3921c9547531758d", variantId: 12359, quantity: 1 };
-let sqlite: Database;
+let sqlite: DatabaseSync;
 let bindings: CheckoutBindings;
 let requests: string[];
 
 beforeEach(async () => {
-  sqlite = new Database(":memory:");
-  sqlite.run(
-    await Bun.file(new URL("../../../migrations/0001_checkout_orders.sql", import.meta.url)).text(),
-  );
-  const db: CheckoutDatabase = {
-    prepare(query) {
-      return {
-        bind(...values) {
-          return {
-            async run() {
-              return { meta: { changes: sqlite.query(query).run(...values).changes } };
-            },
-            async first<T>() {
-              return sqlite.query(query).get(...values) as T | null;
-            },
-          };
-        },
-      };
-    },
-  };
+  const database = createCheckoutTestDatabase();
+  sqlite = database.sqlite;
+  const db = database.db;
   bindings = {
     PRINTIFY_SHOP_ID: "123",
     PRINTIFY_TEST_SHOP_ID: "456",
@@ -128,7 +111,7 @@ async function webhook(overrides: Overrides = {}, tamper = false): Promise<Reque
 }
 
 function ledger() {
-  return sqlite.query("SELECT session_id, status, printify_order_id FROM checkout_orders").all();
+  return sqlite.prepare("SELECT session_id, status, printify_order_id FROM checkout_orders").all();
 }
 
 test("default sandbox mode records simulated fulfillment once, including Express, without Printify credentials or calls", async () => {

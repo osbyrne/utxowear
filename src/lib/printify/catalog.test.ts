@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import * as Effect from "effect/Effect";
 import { makeCatalog } from "./catalog";
 import { makeFetchLayer, type FetchImplementation } from "./client";

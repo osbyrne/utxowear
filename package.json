@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun run types && vite dev",
     "build": "bun run types && vite build",
-    "test": "bun test",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "stripe:listen": "bunx @stripe/cli listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to http://localhost:4321/api/stripe-webhook",
     "deploy": "bun run scripts/deploy.ts",
@@ -16,6 +17,8 @@
     "migrate:production": "wrangler d1 migrations apply CHECKOUT_DB --remote --env production --config wrangler.jsonc",
     "types": "wrangler types worker-configuration.d.ts",
     "check": "bun run types && tsc --noEmit",
+    "verify": "bun run lint && bun run format:check && bun run check && bun run test",
+    "prepare": "[ ! -e .git ] || git config core.hooksPath .githooks",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
@@ -52,6 +55,7 @@
     "bun-types": "1.4.2",
     "oxfmt": "^0.66.0",
     "oxlint": "^1.88.0",
-    "vite": "^8.3.7"
+    "vite": "^8.3.7",
+    "vitest": "^5.1.1"
   }
 }

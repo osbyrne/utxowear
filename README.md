@@ -235,19 +235,21 @@ are preserved; drafts are not automatically published during migration.
 
 ## Commands
 
-| Command                             | Action                                                          |
-| :---------------------------------- | :-------------------------------------------------------------- |
-| `bun dev`                           | Generate Worker types and start the React/Cloudflare dev server |
-| `bun run migrate:local`             | Apply checkout ledger migration to local D1                     |
-| `bun run migrate:preview`           | Apply checkout ledger migrations to preview D1                  |
-| `bun run migrate:production`        | Apply checkout ledger migrations to production D1               |
-| `bun check`                         | Type-check the React application and TypeScript                 |
-| `bun test`                          | Run the focused runtime integration tests                       |
-| `bun run test:e2e`                  | Run the storefront browser suite against the configured store   |
-| `bun run build`                     | Build the Worker into `dist/`                                   |
-| `bun test ./scripts/deploy.test.ts` | Verify deployment and release restrictions                      |
-| `bun run deploy:preview`            | Build, migrate, and deploy a clean trunk checkout to preview    |
-| `bun run deploy:production`         | Build, migrate, and deploy a clean release tag to production    |
+| Command                      | Action                                                          |
+| :--------------------------- | :-------------------------------------------------------------- |
+| `bun dev`                    | Generate Worker types and start the React/Cloudflare dev server |
+| `bun run migrate:local`      | Apply checkout ledger migration to local D1                     |
+| `bun run migrate:preview`    | Apply checkout ledger migrations to preview D1                  |
+| `bun run migrate:production` | Apply checkout ledger migrations to production D1               |
+| `bun check`                  | Type-check the React application and TypeScript                 |
+| `bun run lint`               | Lint with oxlint                                                |
+| `bun run format:check`       | Check formatting with oxfmt (`bun run format` rewrites files)   |
+| `bun run test`               | Run the Vitest runtime and deployment-restriction tests         |
+| `bun run verify`             | Run lint, format check, type check, and Vitest, as CI does      |
+| `bun run test:e2e`           | Run the storefront browser suite against the configured store   |
+| `bun run build`              | Build the Worker into `dist/`                                   |
+| `bun run deploy:preview`     | Build, migrate, and deploy a clean trunk checkout to preview    |
+| `bun run deploy:production`  | Build, migrate, and deploy a clean release tag to production    |
 
 ## Styling
 
@@ -265,7 +267,8 @@ Component styles use [StyleX](https://stylexjs.com/). The official
 - React components apply styles with `stylex.props(...)`.
 - `src/app.css` contains fonts and the global reset in a lower cascade layer.
 
-Run `bun run check` and `bun run build` to validate changes.
+Run `bun run verify` and `bun run build` to validate changes. Changes reach `trunk`
+only through pull requests; see [development workflow](docs/development-workflow.md).
 
 See [testing](docs/testing.md) for scope, browser setup, and payment-test limits.
 

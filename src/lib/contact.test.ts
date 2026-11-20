@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { handleContact, type ContactSender } from "./contact";
 
 const config = { RESEND_API_KEY: "test-key", CONTACT_FROM_EMAIL: "Store <contact@example.com>" };

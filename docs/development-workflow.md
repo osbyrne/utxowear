@@ -9,12 +9,20 @@ through a pull request whose verification has passed.
 2. Commit. The `pre-commit` hook runs `oxfmt --check` and `oxlint`.
 3. Push. The `pre-push` hook runs `bun run verify`: oxlint, oxfmt, `tsc`, and Vitest.
 4. Open a pull request into `trunk`. The Verification workflow runs.
-5. Merge once the **Verification gate** status is green and the branch is current with `trunk`.
+5. GitHub merges the pull request once **Verification gate** is green and there are no
+   conflicts, then deletes the remote branch.
+
+`bun run submit` performs steps 3 and 4 and enables automatic merging. The title and
+description come from the commits. Later pushes to the same branch need only `git push`.
+To enable automatic merging on an existing pull request, run `gh pr merge --auto --merge`.
+
+The next `git pull` on `trunk` deletes the merged local branch. Use merge commits: after a
+squash or rebase merge, the local branch is retained and must be deleted manually.
 
 ## Git hooks
 
 Hooks live in `.githooks/` and are enabled by `bun install`, whose `prepare` script
-sets `core.hooksPath`. To enable them manually, run `bun run prepare`.
+sets `core.hooksPath` and `fetch.prune`. To enable them manually, run `bun run prepare`.
 
 | Hook         | Checks                                               |
 | :----------- | :--------------------------------------------------- |
@@ -49,7 +57,9 @@ The `trunk` ruleset (Settings → Rules → Rulesets, "Protect trunk") applies t
 with no bypass actors:
 
 - Changes require a pull request, with all review conversations resolved.
-- **Verification gate** must pass, and the branch must be up to date with `trunk`.
+- **Verification gate** must pass. The branch need not be current with `trunk`; the
+  Verification run on each push to `trunk` detects incompatibilities between changes
+  that merged separately.
 - Force pushes and branch deletion are blocked.
 
 Release tags (`vX.Y.Z`) are not affected; production deployment still requires a tag on a

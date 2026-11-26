@@ -1,0 +1,11 @@
+#!/bin/sh
+# Delete local branches whose remote branch was removed after merging into trunk.
+# Branches that were never pushed, or that hold commits absent from trunk, are retained.
+set -eu
+git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads |
+  while read -r branch tracking; do
+    [ "$tracking" = "[gone]" ] || continue
+    git merge-base --is-ancestor "refs/heads/$branch" refs/remotes/origin/trunk || continue
+    # Git refuses to delete a branch that is checked out in any worktree.
+    git branch -D "$branch" || true
+  done

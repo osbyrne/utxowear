@@ -2,6 +2,8 @@
 # Delete local branches whose remote branch was removed after merging into trunk.
 # Branches that were never pushed, or that hold commits absent from trunk, are retained.
 set -eu
+# A pull that names a branch does not prune, so remove obsolete remote references here.
+git remote prune origin >/dev/null 2>&1 || true
 git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads |
   while read -r branch tracking; do
     [ "$tracking" = "[gone]" ] || continue
